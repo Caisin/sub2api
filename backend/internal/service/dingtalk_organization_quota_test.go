@@ -114,6 +114,7 @@ func TestDingTalkOrganizationPostgres(t *testing.T) {
 	crossed.RequestID = "cross-app-test-0001"
 	_, err = s.Grant(ctx, crossed, false)
 	require.Error(t, err)
+	// Self grants still require a verified membership (this manager is not linked).
 	self := grant
 	self.TargetID = 1
 	_, err = s.Grant(ctx, self, false)
@@ -257,5 +258,21 @@ func TestDingTalkOrganizationPostgres(t *testing.T) {
 	require.NoError(t, e)
 	require.EqualValues(t, 107, historyCount)
 	require.Len(t, history, 7)
+
+	// A linked manager can credit themselves exactly once within their authorized department.
+	_, err = scoped.Exec(`INSERT INTO auth_identities VALUES(1,'dingtalk','dingtalk:a','union-manager'); INSERT INTO dingtalk_members(app_id,department_id,union_id,staff_id,name) VALUES('a',3,'union-manager','manager','Manager'); UPDATE dingtalk_directory_snapshots SET synced_at=NOW()`)
+	require.NoError(t, err)
+	self.AmountCents = 1000
+	self.RequestID = "self-credit-request-0001"
+	credited, err := s.Grant(ctx, self, false)
+	require.NoError(t, err)
+	replay, err := s.Grant(ctx, self, false)
+	require.NoError(t, err)
+	require.Equal(t, credited.ID, replay.ID)
+	require.NoError(t, scoped.QueryRow(`SELECT balance FROM users WHERE id=1`).Scan(&balance))
+	require.Equal(t, 10.0, balance)
+	budgets, err = s.Managers(ctx, 1, false)
+	require.NoError(t, err)
+	require.EqualValues(t, 13000, budgets[0].UsedCents)
 
 }

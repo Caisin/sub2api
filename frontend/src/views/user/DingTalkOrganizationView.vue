@@ -52,13 +52,17 @@
         <p v-if="syncJob?.status === 'running'" role="status" class="text-sm text-primary-600">{{ text('正在后台同步，可离开此页面，完成后会自动更新。', 'Sync is running in the background. You may leave this page; the directory refreshes when complete.') }}</p>
         <p v-if="syncJob?.status === 'failed'" role="alert" class="text-sm text-red-600">{{ text('同步失败，可点击同步重试：', 'Sync failed. Click sync to retry: ') }}{{ syncJob.error }}</p>
         <p class="text-sm text-gray-500">{{ text('最近同步：', 'Last synced: ') }}{{ directory.synced_at ? new Date(directory.synced_at).toLocaleString() : text('尚未同步', 'Never') }}. {{ text('分配额度要求组织数据在 24 小时内同步。', 'Quota allocation requires a directory synced within 24 hours.') }}</p>
+        <div v-if="selectedDepartmentPath.length" class="flex flex-wrap items-center gap-2 rounded-lg bg-primary-50 p-3 text-sm dark:bg-dark-700" data-testid="selected-department-path">
+          <span>{{ text('当前部门：', 'Current department: ') }}{{ selectedDepartmentPath.map(d => d.name).join(' / ') }}</span>
+          <button class="btn btn-secondary" type="button" @click="locateDepartment">{{ text('定位选中部门', 'Locate selected department') }}</button>
+        </div>
         <div class="grid gap-4 lg:grid-cols-[260px_1fr]">
-          <div class="space-y-1 border-r pr-3 dark:border-dark-600">
+          <div ref="departmentTree" class="max-h-[32rem] space-y-1 overflow-auto border-r pr-3 dark:border-dark-600">
             <p class="mb-2 font-semibold">{{ text('部门', 'Departments') }}</p>
-            <div v-for="dept in visibleDepartmentRows" :key="dept.id" class="flex items-center" :style="{ paddingLeft: `${dept.depth * 16}px` }">
+            <div v-for="dept in visibleDepartmentRows" :key="dept.id" :data-department-id="dept.id" class="flex items-center" :style="{ paddingLeft: `${dept.depth * 16}px` }">
               <button v-if="dept.hasChildren" type="button" class="shrink-0 rounded p-1" :aria-expanded="expandedDepartments.has(dept.id)" :aria-label="`${text('展开/收起', 'Expand/collapse')} ${dept.name}`" @click="toggleCollapse(dept.id)">{{ expandedDepartments.has(dept.id) ? '▾' : '▸' }}</button>
               <span v-else class="w-6 shrink-0" />
-              <button class="min-w-0 flex-1 rounded px-2 py-2 text-left text-sm" :class="selectedDepartment === dept.id ? 'bg-primary-100 text-primary-700' : 'hover:bg-gray-100 dark:hover:bg-dark-700'" @click="selectedDepartment = dept.id; memberSearch = ''">{{ dept.name }}</button>
+              <button class="min-w-0 flex-1 rounded px-2 py-2 text-left text-sm" :aria-current="selectedDepartment === dept.id ? 'true' : undefined" :class="selectedDepartment === dept.id ? 'bg-primary-100 text-primary-700' : 'hover:bg-gray-100 dark:hover:bg-dark-700'" @click="selectedDepartment = dept.id; memberSearch = ''">{{ dept.name }}</button>
             </div>
             <p v-if="!departmentRows.length" class="text-sm text-gray-500">{{ text('暂无可管理的部门', 'No managed departments') }}</p>
           </div>
@@ -68,7 +72,7 @@
               <thead><tr><th class="p-2">{{ text('成员', 'Member') }}</th><th class="p-2">{{ text('平台用户', 'Platform user') }}</th><th class="p-2">{{ text('余额', 'Balance') }}</th><th v-if="allocationMode" class="p-2">{{ text('操作', 'Action') }}</th></tr></thead>
               <tbody><tr v-for="member in pagedMembers" :key="`${member.department_id}-${member.staff_id}`" class="border-t dark:border-dark-600">
                 <td class="p-2">{{ member.name }}<p class="text-xs text-gray-500">{{ departmentName(selectedApp, member.department_id) }}</p></td><td class="p-2">{{ member.user_id || text('尚未绑定', 'Not linked') }}</td><td class="p-2">{{ member.user_id ? money(member.balance) : '—' }}</td>
-                <td v-if="allocationMode" class="p-2"><button class="btn btn-secondary" :disabled="busy || !member.user_id || member.user_id === auth.user?.id || staleDirectory" @click="openGrant(member)">{{ text('增加额度', 'Add quota') }}</button></td>
+                <td v-if="allocationMode" class="p-2"><button class="btn btn-secondary" :disabled="busy || !member.user_id || (isAdmin && member.user_id === auth.user?.id) || staleDirectory" @click="openGrant(member)">{{ text('增加额度', 'Add quota') }}</button></td>
               </tr></tbody>
             </table>
             <div v-if="members.length > memberPageSize" class="mt-3 flex items-center gap-3 text-sm"><button class="btn btn-secondary" :disabled="memberPage === 1" @click="memberPage--">{{ text('上一页', 'Previous') }}</button><span>{{ memberPage }} / {{ Math.ceil(members.length / memberPageSize) }} · {{ text('每页 20 条', '20 per page') }} · {{ members.length }} {{ text('名成员', 'members') }}</span><button class="btn btn-secondary" :disabled="memberPage * memberPageSize >= members.length" @click="memberPage++">{{ text('下一页', 'Next') }}</button></div>
@@ -84,7 +88,7 @@
           <p>{{ manager.name || `#${manager.user_id}` }} · {{ manager.enabled ? text('已启用', 'Enabled') : text('已撤销', 'Revoked') }}</p>
           <p class="text-sm text-gray-500">{{ text('总额度 / 已分配 / 剩余：', 'Budget / allocated / remaining: ') }}{{ money(manager.limit_cents / 100) }} / {{ money(manager.used_cents / 100) }} / {{ money((manager.limit_cents - manager.used_cents) / 100) }}</p>
         </div>
-        <p class="text-sm text-gray-500">{{ isAdmin ? text('系统管理员可为全部组织的成员充值。', 'System administrators can credit members in all organizations.') : text('总额度跨应用、跨部门累计；0 表示不能分配。', 'The cumulative budget covers all applications and departments. Zero allows no allocation.') }}</p>
+        <p class="text-sm text-gray-500">{{ isAdmin ? text('系统管理员可为全部组织的成员充值。', 'System administrators can credit members in all organizations.') : text('可为授权部门内的成员（包括自己）分配额度；总额度跨应用、跨部门累计。', 'Allocate to members, including yourself, within authorized departments. The budget is cumulative across apps and departments.') }}</p>
       </section>
 
       <section ref="grantPanel" v-if="allocationMode && grantMember" class="card space-y-3 p-5" role="region" :aria-label="text('分配额度', 'Allocate quota')">
@@ -108,7 +112,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { buildDingTalkDepartmentRows } from '@/utils/dingtalkDepartments'
+import { buildDingTalkDepartmentRows, dingTalkDepartmentPath } from '@/utils/dingtalkDepartments'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { startOAuthBinding } from '@/api/user'
 import { useAuthStore } from '@/stores/auth'
@@ -134,6 +138,14 @@ const directory = ref<DingTalkDirectory>({ departments: [], members: [], synced_
 const staleDirectory = computed(() => !directory.value.synced_at || Date.now() - Date.parse(directory.value.synced_at) >= 86400000)
 const expandedDepartments = ref(new Set<number>())
 const departmentRows = computed(() => buildDingTalkDepartmentRows(directory.value.departments))
+const departmentTree = ref<HTMLElement | null>(null)
+const selectedDepartmentPath = computed(() => dingTalkDepartmentPath(directory.value.departments, selectedDepartment.value))
+async function locateDepartment() {
+  selectedDepartmentPath.value.slice(0, -1).forEach(d => expandedDepartments.value.add(d.id))
+  await nextTick()
+  departmentTree.value?.querySelector<HTMLElement>(`[data-department-id="${selectedDepartment.value}"]`)?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+}
+watch(() => selectedDepartmentPath.value.map(d => d.id).join('/'), () => { void locateDepartment() })
 const visibleDepartmentRows = computed(() => {
   let hiddenBelow = Infinity
   return departmentRows.value.filter(d => {
@@ -246,9 +258,10 @@ async function submitGrant() {
       if (status && status >= 400 && status < 500) pendingGrant.value = null
       throw e
     }
+    const creditedSelf = grantMember.value.user_id === auth.user?.id
     pendingGrant.value = null; grantMember.value = null
     notice.value = text('额度已到账', 'Quota credited')
-    await Promise.all([refreshDirectory(), refreshAccounting()])
+    await Promise.all([refreshDirectory(), refreshAccounting(), ...(creditedSelf ? [auth.refreshUser()] : [])])
   })
 }
 onMounted(async () => {

@@ -36,7 +36,7 @@
       </section>
     </div>
 
-    <BaseDialog v-if="dialog && managerForm" :show="true" :title="dialogTitle" width="wide" :show-close-button="!busy && !pendingIncrease" :close-on-escape="!busy && !pendingIncrease" @close="closeDialog">
+    <BaseDialog v-if="isAdmin && dialog && managerForm" :show="true" :title="dialogTitle" width="wide" :show-close-button="!busy && !pendingIncrease" :close-on-escape="!busy && !pendingIncrease" @close="closeDialog">
       <p v-if="dialogError" role="alert" class="mb-4 rounded-lg bg-red-50 p-3 text-red-700 dark:bg-red-950">{{ dialogError }}</p>
       <p v-if="dialog !== 'create'" class="mb-4 font-medium">{{ managerForm.name || `#${managerForm.user_id}` }} (#{{ managerForm.user_id }})</p>
       <template v-if="dialog === 'history'">
@@ -51,7 +51,7 @@
       <form v-else class="space-y-4" @submit.prevent="submit">
         <fieldset class="space-y-4" :disabled="busy">
           <label v-if="dialog === 'create' || dialog === 'permissions'" class="block text-sm">{{ text('选择组织应用', 'Organization application') }}
-            <select v-model="selectedApp" class="input mt-1" :disabled="directoryLoading" @change="loadDirectory"><option v-for="app in apps" :key="app.id" :value="app.id">{{ app.name }}</option></select>
+            <select v-model="selectedApp" class="input mt-1" :disabled="directoryLoading" @change="loadDirectory"><option v-for="app in apps" :key="app.id" :value="app.id">{{ app.name }}{{ managerForm.departments.some(d => d.app_id === app.id) ? ` (${text('已授权', 'Assigned')})` : '' }}</option></select>
           </label>
           <p v-if="directoryLoading">{{ text('加载组织中…', 'Loading directory…') }}</p>
           <template v-if="dialog === 'create' || dialog === 'edit'">
@@ -164,12 +164,13 @@ async function loadDirectory() {
   finally { if (version === dialogVersion) directoryLoading.value = false }
 }
 async function openDialog(mode: Dialog, manager?: DingTalkManager) {
-  if (busy.value || pendingIncrease.value) return
+  if (!isAdmin.value || busy.value || pendingIncrease.value) return
   dialogVersion++; dialogError.value = ''; directoryLoading.value = false
   const draft: DingTalkManager = manager ? { ...manager, departments: manager.departments.map(d => ({ ...d })) } : { user_id: 0, limit_cents: 50000, used_cents: 0, enabled: true, departments: [] }
   managerForm.value = draft
   managerLimit.value = draft.limit_cents / 100
   increaseAmount.value = 500; dialog.value = mode
+  if (mode === 'permissions') selectedApp.value = manager?.departments.find(d => apps.value.some(a => a.id === d.app_id))?.app_id || apps.value[0]?.id || ''
   if (mode === 'create' || mode === 'permissions') await loadDirectory()
   if (mode === 'history') { history.value = []; historyTotal.value = 0; historyPage.value = 1; await loadHistory(1) }
 }
@@ -197,7 +198,7 @@ async function loadHistory(target: number) {
   finally { if (version === dialogVersion) historyLoading.value = false }
 }
 async function submit() {
-  if (busy.value || !managerForm.value) return
+  if (!isAdmin.value || busy.value || !managerForm.value) return
   busy.value = true; dialogError.value = ''; notice.value = ''
   const manager = managerForm.value
   try {

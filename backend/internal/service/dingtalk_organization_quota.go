@@ -351,8 +351,8 @@ func DingTalkProviderKey(app string) string {
 // Grant atomically checks current scope, deducts the cumulative budget, credits
 // the balance and records the idempotent audit entry in the same transaction.
 func (s *DingTalkOrganizationService) Grant(ctx context.Context, g DingTalkQuotaGrant, admin bool) (*DingTalkQuotaGrant, error) {
-	if g.AmountCents <= 0 || g.AmountCents > maxDingTalkBudgetCents || g.TargetID <= 0 || g.TargetID == g.ActorID || len(g.RequestID) < 16 || len(g.RequestID) > 64 {
-		return nil, infraerrors.BadRequest("INVALID_GRANT", "Invalid amount, recipient or request ID; self grants are not allowed")
+	if g.AmountCents <= 0 || g.AmountCents > maxDingTalkBudgetCents || g.TargetID <= 0 || len(g.RequestID) < 16 || len(g.RequestID) > 64 {
+		return nil, infraerrors.BadRequest("INVALID_GRANT", "Invalid amount, recipient or request ID")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

@@ -17,3 +17,17 @@ export function buildDingTalkDepartmentRows(ds: DingTalkDepartment[]) {
   }
   return result
 }
+
+// Stop at the visible scope boundary; never invent inaccessible ancestors.
+export function dingTalkDepartmentPath(departments: DingTalkDepartment[], id: number): DingTalkDepartment[] {
+  const byID = new Map(departments.map(d => [d.id, d]))
+  const path: DingTalkDepartment[] = []
+  const seen = new Set<number>()
+  let department = byID.get(id)
+  while (department && !seen.has(department.id)) {
+    seen.add(department.id)
+    path.push(department)
+    department = byID.get(department.parent_id)
+  }
+  return path.reverse()
+}

@@ -3,7 +3,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import DingTalkOrganizationView from '../DingTalkOrganizationView.vue'
 
-const state = vi.hoisted(() => ({ isAdmin: false, user: { id: 1 } }))
+const state = vi.hoisted(() => ({ isAdmin: false, user: { id: 1 }, refreshUser: vi.fn().mockResolvedValue({ id: 1 }) }))
 const api = vi.hoisted(() => ({ apps: vi.fn(), directory: vi.fn(), managers: vi.fn(), grants: vi.fn(), grant: vi.fn(), saveManager: vi.fn(), saveApps: vi.fn(), sync: vi.fn(), syncStatus: vi.fn() }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state }))
 vi.mock('@/api/dingtalk', () => ({ dingTalkAPI: () => api, publicDingTalkApps: vi.fn().mockResolvedValue([{ id: 'a', name: 'Engineering' }]) }))
@@ -139,6 +139,33 @@ describe('DingTalk organization quota', () => {
     await wrapper.get('[data-testid="member-search"]').setValue('Person 0')
     expect(wrapper.get('tbody').findAll('tr')).toHaveLength(1)
     expect(wrapper.get('tbody').text()).toContain('Person 0')
+  })
+
+  it('allows a department manager to allocate to their own linked account', async () => {
+    const data = await api.directory()
+    data.members = [{ department_id: 3, staff_id: 'self', name: 'Myself', user_id: 1, balance: 0 }]
+    const wrapper = mount(DingTalkOrganizationView, { props: { mode: 'allocation' } })
+    await flushPromises()
+    expect(button(wrapper, 'Add quota').attributes('disabled')).toBeUndefined()
+    await button(wrapper, 'Add quota').trigger('click')
+    await wrapper.get('[data-testid="grant-amount"]').setValue(10)
+    await wrapper.get('[role="region"] form').trigger('submit'); await flushPromises()
+    expect(api.grant).toHaveBeenCalledWith(expect.objectContaining({ target_id: 1, department_id: 3, amount: 10 }))
+    expect(state.refreshUser).toHaveBeenCalledOnce()
+    expect(wrapper.text()).not.toContain('Add manager')
+  })
+  it('keeps the selected department path visible and locates a collapsed nested department', async () => {
+    const wrapper = mount(DingTalkOrganizationView)
+    await flushPromises()
+    await wrapper.get('[aria-label="Expand/collapse Team"]').trigger('click')
+    await button(wrapper, 'Child').trigger('click'); await flushPromises()
+    expect(wrapper.get('[data-testid="selected-department-path"]').text()).toContain('Team / Child')
+    await wrapper.get('[aria-label="Expand/collapse Team"]').trigger('click')
+    expect(wrapper.find('[data-department-id="3"]').exists()).toBe(false)
+    await button(wrapper, 'Locate selected department').trigger('click'); await flushPromises()
+    expect(wrapper.get('[data-department-id="3"] button').attributes('aria-current')).toBe('true')
+    await button(wrapper, 'Refresh').trigger('click'); await flushPromises()
+    expect(wrapper.get('[data-department-id="3"] button').attributes('aria-current')).toBe('true')
   })
 
 })
