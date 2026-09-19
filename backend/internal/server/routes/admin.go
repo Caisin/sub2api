@@ -46,6 +46,11 @@ func RegisterAdminRoutes(
 		organization.GET("/statistics", h.DingTalkOrganization.Statistics)
 		organization.GET("/managers", h.DingTalkOrganization.Managers)
 		organization.PUT("/managers", h.DingTalkOrganization.SaveManager)
+		organization.GET("/managers/page", h.DingTalkOrganization.ManagerPage)
+		organization.POST("/managers", h.DingTalkOrganization.CreateManager)
+		organization.PATCH("/managers/:manager", h.DingTalkOrganization.PatchManager)
+		organization.POST("/managers/:manager/budget", h.DingTalkOrganization.IncreaseManagerBudget)
+		organization.GET("/managers/:manager/grants", h.DingTalkOrganization.ManagerGrants)
 		organization.GET("/grants", h.DingTalkOrganization.Grants)
 		organization.POST("/grants", h.DingTalkOrganization.Grant)
 

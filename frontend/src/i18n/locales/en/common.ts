@@ -165,6 +165,7 @@ export default {
   nav: {
     organizationQuota: 'Organization quota allocation',
     organizationStatistics: 'Organization quota statistics',
+    dingtalkManagers: 'Project managers',
     dingtalkManagement: 'DingTalk management',
     dingtalkOrganization: 'DingTalk organization',
     dashboard: 'Dashboard',

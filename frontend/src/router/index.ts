@@ -188,6 +188,12 @@ const routes: RouteRecordRaw[] = [
 
   // ==================== User Routes ====================
   {
+    path: '/organization/managers',
+    name: 'DingTalkManagers',
+    component: () => import('@/views/user/DingTalkManagersView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Project managers', titleKey: 'nav.dingtalkManagers' }
+  },
+  {
     path: '/organization/quota',
     name: 'DingTalkQuota',
     component: () => import('@/views/user/DingTalkOrganizationView.vue'),

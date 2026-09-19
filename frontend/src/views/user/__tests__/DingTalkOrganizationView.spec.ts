@@ -1,7 +1,6 @@
 import { ref } from 'vue'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import Select from '@/components/common/Select.vue'
 import DingTalkOrganizationView from '../DingTalkOrganizationView.vue'
 
 const state = vi.hoisted(() => ({ isAdmin: false, user: { id: 1 } }))
@@ -59,16 +58,7 @@ describe('DingTalk organization quota', () => {
     expect(api.grant.mock.calls[1][0]).toEqual(input)
     expect(wrapper.text()).toContain('Quota credited')
   })
-  it('updates a manager budget while preserving assignments in other applications', async () => {
-    state.isAdmin = true
-    const wrapper = mount(DingTalkOrganizationView)
-    await flushPromises()
-    await button(wrapper, 'Edit').trigger('click')
-    await wrapper.get('[data-testid="manager-limit"]').setValue(150)
-    await button(wrapper, 'Save manager').element.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-    await flushPromises()
-    expect(api.saveManager).toHaveBeenCalledWith(expect.objectContaining({ user_id: 1, limit_cents: 15000, departments: [{ app_id: 'a', department_id: 2 }, { app_id: 'b', department_id: 5 }] }))
-  })
+
   it('collapses department branches and searches members across the organization', async () => {
     const wrapper = mount(DingTalkOrganizationView)
     await flushPromises()
@@ -81,29 +71,7 @@ describe('DingTalk organization quota', () => {
     await wrapper.get('[aria-label="Expand/collapse Team"]').trigger('click')
     expect(button(wrapper, 'Child')).toBeDefined()
   })
-  it('defaults a new manager to 500 and selects the member departments from a searchable dropdown', async () => {
-    state.isAdmin = true
-    const wrapper = mount(DingTalkOrganizationView)
-    await flushPromises()
-    expect(wrapper.findAll('button').some(b => b.text() === 'Add quota')).toBe(false)
-    await button(wrapper, 'Add manager').trigger('click')
-    expect((wrapper.get('[data-testid="manager-limit"]').element as HTMLInputElement).value).toBe('500')
-    const select = wrapper.findComponent(Select)
-    expect(select.props('searchable')).toBe(true)
-    await select.get('button').trigger('click')
-    await flushPromises()
-    const input = document.querySelector('.select-search-input') as HTMLInputElement
-    input.value = 'Member'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    await flushPromises()
-    const option = document.querySelector('[role="option"]') as HTMLElement
-    expect(option.textContent).toContain('Member (#2)')
-    option.click()
-    await flushPromises()
-    await button(wrapper, 'Save manager').element.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-    await flushPromises()
-    expect(api.saveManager).toHaveBeenCalledWith(expect.objectContaining({ user_id: 2, limit_cents: 50000, departments: [{ app_id: 'a', department_id: 3 }] }))
-  })
+
   it('submits a background sync and polls until completion without blocking other controls', async () => {
     vi.useFakeTimers()
     state.isAdmin = true
@@ -137,24 +105,7 @@ describe('DingTalk organization quota', () => {
     expect(wrapper.text()).toContain('System administrators can credit members in all organizations')
   })
 
-  it('searches and collapses manager departments without losing selected permissions', async () => {
-    state.isAdmin = true
-    const wrapper = mount(DingTalkOrganizationView)
-    await flushPromises()
-    await button(wrapper, 'Add manager').trigger('click')
-    const departments = wrapper.get('[data-testid="manager-departments"]')
-    expect(departments.text()).not.toContain('Child')
-    await wrapper.get('[data-testid="manager-department-search"]').setValue('Child')
-    expect(departments.text()).toContain('Team')
-    expect(departments.text()).toContain('Child')
-    const child = departments.findAll('label').find(label => label.text() === 'Child')!
-    await child.get('input').setValue(true)
-    await wrapper.get('[aria-label="Expand/collapse managed department Team"]').trigger('click')
-    expect(departments.text()).not.toContain('Child')
-    await wrapper.get('[data-testid="manager-department-search"]').setValue('')
-    await wrapper.get('[aria-label="Expand/collapse managed department Team"]').trigger('click')
-    expect((departments.findAll('label').find(label => label.text() === 'Child')!.get('input').element as HTMLInputElement).checked).toBe(true)
-  })
+
   it('includes descendants once per member and limits allocation search to the selected subtree', async () => {
     const data = await api.directory()
     data.departments.push({ id: 4, parent_id: 3, name: 'Grandchild' }, { id: 5, parent_id: 1, name: 'Other' })
@@ -174,6 +125,20 @@ describe('DingTalk organization quota', () => {
     await button(wrapper, 'Other').trigger('click')
     expect(wrapper.get('tbody').findAll('tr')).toHaveLength(1)
     expect(wrapper.get('tbody').text()).toContain('Outside member')
+  })
+
+  it('shows 20 members per page and resets pagination on search', async () => {
+    const data = await api.directory()
+    data.members = Array.from({ length: 25 }, (_, i) => ({ department_id: 2, staff_id: `staff-${i}`, name: `Person ${i}`, user_id: i + 10, balance: 1 }))
+    const wrapper = mount(DingTalkOrganizationView)
+    await flushPromises()
+    expect(wrapper.get('tbody').findAll('tr')).toHaveLength(20)
+    await button(wrapper, 'Next').trigger('click')
+    expect(wrapper.get('tbody').findAll('tr')).toHaveLength(5)
+    expect(wrapper.get('tbody').text()).toContain('Person 24')
+    await wrapper.get('[data-testid="member-search"]').setValue('Person 0')
+    expect(wrapper.get('tbody').findAll('tr')).toHaveLength(1)
+    expect(wrapper.get('tbody').text()).toContain('Person 0')
   })
 
 })

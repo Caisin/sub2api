@@ -159,8 +159,11 @@ func (s *DingTalkOrganizationService) replaceDirectory(ctx context.Context, app 
 }
 
 func (s *DingTalkOrganizationService) Managers(ctx context.Context, actor int64, admin bool) ([]DingTalkManager, error) {
+	return s.listManagers(ctx, actor, admin, "", nil)
+}
+func (s *DingTalkOrganizationService) listManagers(ctx context.Context, actor int64, admin bool, suffix string, extra []any) ([]DingTalkManager, error) {
 	result := []DingTalkManager{}
-	rows, err := s.db.QueryContext(ctx, `SELECT b.user_id,u.username,b.limit_cents,b.used_cents,b.enabled FROM dingtalk_manager_budgets b JOIN users u ON u.id=b.user_id WHERE ($1 OR b.user_id=$2) AND u.deleted_at IS NULL ORDER BY b.user_id`, admin, actor)
+	rows, err := s.db.QueryContext(ctx, `SELECT b.user_id,u.username,b.limit_cents,b.used_cents,b.enabled FROM dingtalk_manager_budgets b JOIN users u ON u.id=b.user_id WHERE ($1 OR b.user_id=$2) AND u.deleted_at IS NULL ORDER BY b.user_id`+suffix, append([]any{admin, actor}, extra...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -201,6 +204,12 @@ func (s *DingTalkOrganizationService) Managers(ctx context.Context, actor int64,
 }
 
 func (s *DingTalkOrganizationService) SaveManager(ctx context.Context, m DingTalkManager) error {
+	return s.saveManager(ctx, m, false)
+}
+func (s *DingTalkOrganizationService) CreateManager(ctx context.Context, m DingTalkManager) error {
+	return s.saveManager(ctx, m, true)
+}
+func (s *DingTalkOrganizationService) saveManager(ctx context.Context, m DingTalkManager, createOnly bool) error {
 	if m.UserID <= 0 || m.LimitCents < 0 || m.LimitCents > maxDingTalkBudgetCents || len(m.Departments) > 100 {
 		return infraerrors.BadRequest("INVALID_MANAGER", "Invalid manager or budget")
 	}
@@ -215,29 +224,46 @@ func (s *DingTalkOrganizationService) SaveManager(ctx context.Context, m DingTal
 	}
 	// Keep used_cents intact across revocation/reconfiguration.
 	var used int64
-	err = tx.QueryRowContext(ctx, `INSERT INTO dingtalk_manager_budgets(user_id,limit_cents,enabled) VALUES($1,$2,$3) ON CONFLICT(user_id) DO UPDATE SET limit_cents=EXCLUDED.limit_cents,enabled=EXCLUDED.enabled,updated_at=NOW() RETURNING used_cents`, m.UserID, m.LimitCents, m.Enabled).Scan(&used)
+	conflict := " ON CONFLICT(user_id) DO UPDATE SET limit_cents=EXCLUDED.limit_cents,enabled=EXCLUDED.enabled,updated_at=NOW()"
+	if createOnly {
+		conflict = " ON CONFLICT(user_id) DO NOTHING"
+	}
+	err = tx.QueryRowContext(ctx, `INSERT INTO dingtalk_manager_budgets(user_id,limit_cents,enabled) VALUES($1,$2,$3)`+conflict+` RETURNING used_cents`, m.UserID, m.LimitCents, m.Enabled).Scan(&used)
+	if createOnly && errors.Is(err, sql.ErrNoRows) {
+		return infraerrors.Conflict("MANAGER_EXISTS", "Manager already exists; edit the existing manager")
+	}
 	if err != nil {
 		return err
 	}
 	if m.LimitCents < used {
 		return infraerrors.BadRequest("BUDGET_BELOW_SPENT", "Maximum quota cannot be below the already allocated amount")
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM dingtalk_department_managers WHERE user_id=$1`, m.UserID); err != nil {
+	if err = replaceDingTalkManagerDepartments(ctx, tx, m.UserID, m.Departments); err != nil {
 		return err
 	}
-	for _, d := range m.Departments {
+	return tx.Commit()
+}
+
+func replaceDingTalkManagerDepartments(ctx context.Context, tx *sql.Tx, userID int64, departments []DingTalkManagerDepartment) error {
+	if len(departments) > 100 {
+		return infraerrors.BadRequest("INVALID_MANAGER", "Too many department assignments")
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM dingtalk_department_managers WHERE user_id=$1`, userID); err != nil {
+		return err
+	}
+	for _, d := range departments {
 		var exists bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM dingtalk_departments WHERE app_id=$1 AND department_id=$2)`, d.AppID, d.DepartmentID).Scan(&exists); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM dingtalk_departments WHERE app_id=$1 AND department_id=$2)`, d.AppID, d.DepartmentID).Scan(&exists); err != nil {
 			return err
 		}
 		if !exists {
 			return infraerrors.BadRequest("UNKNOWN_DEPARTMENT", "Sync the organization before assigning managers")
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO dingtalk_department_managers(user_id,app_id,department_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, m.UserID, d.AppID, d.DepartmentID); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO dingtalk_department_managers(user_id,app_id,department_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, userID, d.AppID, d.DepartmentID); err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *DingTalkOrganizationService) Directory(ctx context.Context, app string, actor int64, admin bool) (*DingTalkDirectory, error) {

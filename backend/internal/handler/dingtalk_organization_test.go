@@ -27,7 +27,7 @@ func TestDingTalkApplicationStateAndSyntheticIdentity(t *testing.T) {
 }
 func TestDingTalkOrganizationAdminGuard(t *testing.T) {
 	h := &DingTalkOrganizationHandler{}
-	for _, fn := range []gin.HandlerFunc{h.SaveApps, h.SaveManager, h.Sync, h.SyncStatus} {
+	for _, fn := range []gin.HandlerFunc{h.SaveApps, h.SaveManager, h.Sync, h.SyncStatus, h.ManagerPage, h.CreateManager, h.PatchManager, h.IncreaseManagerBudget, h.ManagerGrants} {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest("PUT", "/", nil)

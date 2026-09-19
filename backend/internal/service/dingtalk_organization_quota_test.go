@@ -60,6 +60,11 @@ func TestDingTalkOrganizationPostgres(t *testing.T) {
 	_, err = scoped.Exec(string(migration))
 	require.NoError(t, err)
 
+	migration, err = os.ReadFile(filepath.Join("..", "..", "migrations", "241_dingtalk_manager_budget_increases.sql"))
+	require.NoError(t, err)
+	_, err = scoped.Exec(string(migration))
+	require.NoError(t, err)
+
 	s := NewDingTalkOrganizationService(scoped, nil)
 	ctx := context.Background()
 	ds := []DingTalkDepartment{{ID: 1, Name: "Corp"}, {ID: 2, ParentID: 1, Name: "Team"}, {ID: 3, ParentID: 2, Name: "Child"}, {ID: 4, ParentID: 1, Name: "Other"}}
@@ -207,4 +212,50 @@ func TestDingTalkOrganizationPostgres(t *testing.T) {
 	g.RequestID = "stale-grant-00001"
 	_, err = s.Grant(ctx, g, false)
 	require.Error(t, err)
+	// Concurrent budget increases add to the latest cap; duplicate request IDs apply once.
+	initial := m.LimitCents
+	var increases sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		increases.Add(1)
+		go func(i int) {
+			defer increases.Done()
+			_, e := s.IncreaseManagerBudget(ctx, 3, 1, 1000, fmt.Sprintf("budget-increase-%04d", i%2))
+			require.NoError(t, e)
+		}(i)
+	}
+	increases.Wait()
+	budgets, e := s.Managers(ctx, 1, false)
+	require.NoError(t, e)
+	require.Equal(t, initial+2000, budgets[0].LimitCents)
+	require.EqualValues(t, 12000, budgets[0].UsedCents)
+	// Changing permissions with an older browser snapshot cannot reduce the cap.
+	permissions := []DingTalkManagerDepartment{{AppID: "a", DepartmentID: 2}}
+	require.NoError(t, s.PatchManager(ctx, 1, DingTalkManagerPatch{Departments: &permissions}))
+	staleLimit := initial + 5000
+	require.Error(t, s.PatchManager(ctx, 1, DingTalkManagerPatch{LimitCents: &staleLimit, ExpectedLimitCents: &initial}))
+	// Audit failure rolls the budget update back.
+	_, err = scoped.Exec(`ALTER TABLE dingtalk_manager_budget_increases ADD CONSTRAINT reject_budget_test CHECK(request_id <> 'budget-rollback-0001')`)
+	require.NoError(t, err)
+	_, err = s.IncreaseManagerBudget(ctx, 3, 1, 1000, "budget-rollback-0001")
+	require.Error(t, err)
+	budgets, e = s.Managers(ctx, 1, false)
+	require.NoError(t, e)
+	require.Equal(t, initial+2000, budgets[0].LimitCents)
+	// Default budgets and both paginated reads execute against PostgreSQL.
+	_, err = scoped.Exec(`INSERT INTO users(id,username) SELECT n,'manager-'||n FROM generate_series(100,124) n; INSERT INTO dingtalk_manager_budgets(user_id) SELECT n FROM generate_series(100,124) n;
+ INSERT INTO dingtalk_quota_grants(actor_id,target_id,app_id,department_id,amount_cents,request_id) SELECT 1,2,'a',3,1,'history-page-'||n FROM generate_series(1,105) n`)
+	require.NoError(t, err)
+	managerPage, managerCount, e := s.ManagerPage(ctx, 1)
+	require.NoError(t, e)
+	require.Len(t, managerPage, 20)
+	require.EqualValues(t, 26, managerCount)
+	managerPage, _, e = s.ManagerPage(ctx, 2)
+	require.NoError(t, e)
+	require.Len(t, managerPage, 6)
+	require.EqualValues(t, 50000, managerPage[0].LimitCents)
+	history, historyCount, e := s.ManagerGrants(ctx, 1, 6)
+	require.NoError(t, e)
+	require.EqualValues(t, 107, historyCount)
+	require.Len(t, history, 7)
+
 }

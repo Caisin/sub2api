@@ -743,6 +743,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
       path: '/organization', label: t('nav.dingtalkManagement'), icon: UsersIcon, expandOnly: true,
       children: [
         { path: '/organization/dingtalk', label: t('nav.dingtalkOrganization'), icon: UsersIcon },
+        ...(isAdmin.value ? [{ path: '/organization/managers', label: t('nav.dingtalkManagers'), icon: UsersIcon }] : []),
         { path: '/organization/quota', label: t('nav.organizationQuota'), icon: CreditCardIcon },
         { path: '/organization/statistics', label: t('nav.organizationStatistics'), icon: ChartIcon }
       ]

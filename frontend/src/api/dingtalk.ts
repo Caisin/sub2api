@@ -31,6 +31,9 @@ export interface DingTalkManager {
   enabled: boolean
   departments: { app_id: string; department_id: number }[]
 }
+export interface DingTalkPage<T> { items: T[]; total: number; page: number; page_size: number; pages: number }
+export interface DingTalkManagerPatch { enabled?: boolean; limit_cents?: number; expected_limit_cents?: number; departments?: DingTalkManager['departments'] }
+export interface DingTalkBudgetIncrease { id: number; manager_id: number; amount_cents: number; limit_cents_after: number; created_at: string }
 export interface DingTalkGrant { id: number; actor_id: number; target_id: number; app_id: string; department_id: number; amount_cents: number; created_at: string }
 export interface DingTalkGrantInput { app_id: string; department_id: number; target_id: number; amount: number; request_id: string }
 export async function publicDingTalkApps() {
@@ -46,6 +49,11 @@ export function dingTalkAPI(admin: boolean) {
     syncStatus: async (app: string) => (await apiClient.get<DingTalkSyncJob>(`${base}/apps/${encodeURIComponent(app)}/sync`)).data,
     statistics: async (params: DingTalkStatisticsFilter) => (await apiClient.get<DingTalkStatistics>(`${base}/statistics`, { params })).data,
     managers: async () => (await apiClient.get<DingTalkManager[]>(`${base}/managers`)).data,
+    managerPage: async (page = 1) => (await apiClient.get<DingTalkPage<DingTalkManager>>(`${base}/managers/page`, { params: { page } })).data,
+    createManager: async (manager: DingTalkManager) => apiClient.post(`${base}/managers`, manager),
+    patchManager: async (user: number, input: DingTalkManagerPatch) => apiClient.patch(`${base}/managers/${user}`, input),
+    increaseBudget: async (user: number, input: { amount: number; request_id: string }) => (await apiClient.post<DingTalkBudgetIncrease>(`${base}/managers/${user}/budget`, input)).data,
+    managerGrants: async (user: number, page = 1) => (await apiClient.get<DingTalkPage<DingTalkGrant>>(`${base}/managers/${user}/grants`, { params: { page } })).data,
     saveManager: async (manager: DingTalkManager) => apiClient.put(`${base}/managers`, manager),
     grants: async () => (await apiClient.get<DingTalkGrant[]>(`${base}/grants`)).data,
     grant: async (input: DingTalkGrantInput) => (await apiClient.post<DingTalkGrant>(`${base}/grants`, input)).data

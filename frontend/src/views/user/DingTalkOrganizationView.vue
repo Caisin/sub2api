@@ -71,43 +71,20 @@
                 <td v-if="allocationMode" class="p-2"><button class="btn btn-secondary" :disabled="busy || !member.user_id || member.user_id === auth.user?.id || staleDirectory" @click="openGrant(member)">{{ text('增加额度', 'Add quota') }}</button></td>
               </tr></tbody>
             </table>
-            <div v-if="members.length > memberPageSize" class="mt-3 flex items-center gap-3 text-sm"><button class="btn btn-secondary" :disabled="memberPage === 1" @click="memberPage--">{{ text('上一页', 'Previous') }}</button><span>{{ memberPage }} / {{ Math.ceil(members.length / memberPageSize) }}</span><button class="btn btn-secondary" :disabled="memberPage * memberPageSize >= members.length" @click="memberPage++">{{ text('下一页', 'Next') }}</button></div>
+            <div v-if="members.length > memberPageSize" class="mt-3 flex items-center gap-3 text-sm"><button class="btn btn-secondary" :disabled="memberPage === 1" @click="memberPage--">{{ text('上一页', 'Previous') }}</button><span>{{ memberPage }} / {{ Math.ceil(members.length / memberPageSize) }} · {{ text('每页 20 条', '20 per page') }} · {{ members.length }} {{ text('名成员', 'members') }}</span><button class="btn btn-secondary" :disabled="memberPage * memberPageSize >= members.length" @click="memberPage++">{{ text('下一页', 'Next') }}</button></div>
             <p v-if="!members.length" class="py-6 text-gray-500">{{ text('此部门暂无成员', 'No members in this department') }}</p>
           </div>
         </div>
       </section>
       <p v-else-if="!loading" class="card p-5">{{ text('暂无可管理的组织。请先在钉钉组织菜单配置应用、同步组织，再由管理员配置负责人。', 'No managed organizations. Configure an app, sync the directory and assign department managers.') }}</p>
 
-      <section v-if="isAdmin || allocationMode" class="card space-y-4 p-5">
-        <h2 class="font-semibold">{{ isAdmin ? (allocationMode ? text('管理员充值权限', 'Administrator allocation access') : text('部门负责人及最大可分配额度', 'Department managers and allocation budgets')) : text('我的可分配额度', 'My allocation budget') }}</h2>
-        <div v-for="manager in displayedManagers" :key="manager.user_id" class="flex flex-wrap items-center justify-between gap-3 rounded border p-3 dark:border-dark-600">
-          <div><p>{{ manager.name || `#${manager.user_id}` }} · {{ manager.enabled ? text('已启用', 'Enabled') : text('已撤销', 'Revoked') }}</p><p class="text-sm text-gray-500">{{ text('总额度 / 已分配 / 剩余：', 'Budget / allocated / remaining: ') }}{{ money(manager.limit_cents / 100) }} / {{ money(manager.used_cents / 100) }} / {{ money((manager.limit_cents - manager.used_cents) / 100) }}</p><p class="text-sm text-gray-500">{{ manager.departments.map(d => `${d.app_id} / ${departmentName(d.app_id, d.department_id)}`).join('、') }}</p></div>
-          <button v-if="isAdmin && !allocationMode" class="btn btn-secondary" :disabled="busy" @click="editManager(manager)">{{ text('编辑', 'Edit') }}</button>
+      <section v-if="allocationMode" class="card space-y-4 p-5">
+        <h2 class="font-semibold">{{ isAdmin ? text('管理员充值权限', 'Administrator allocation access') : text('我的可分配额度', 'My allocation budget') }}</h2>
+        <div v-for="manager in displayedManagers" :key="manager.user_id" class="rounded border p-3 dark:border-dark-600">
+          <p>{{ manager.name || `#${manager.user_id}` }} · {{ manager.enabled ? text('已启用', 'Enabled') : text('已撤销', 'Revoked') }}</p>
+          <p class="text-sm text-gray-500">{{ text('总额度 / 已分配 / 剩余：', 'Budget / allocated / remaining: ') }}{{ money(manager.limit_cents / 100) }} / {{ money(manager.used_cents / 100) }} / {{ money((manager.limit_cents - manager.used_cents) / 100) }}</p>
         </div>
-        <p v-if="allocationMode && isAdmin" class="text-sm text-gray-500">{{ text('系统管理员可为全部组织的成员充值。', 'System administrators can credit members in all organizations.') }}</p>
-        <p v-else class="text-sm text-gray-500">{{ text('总额度跨应用、跨部门累计；0 表示不能分配。调整权限不会重置已分配金额。', 'The cumulative budget covers every app and department. Zero allows no allocation. Permission changes never reset spending.') }}</p>
-        <button v-if="isAdmin && !allocationMode" class="btn btn-secondary" :disabled="busy" @click="editManager()">{{ text('添加负责人', 'Add manager') }}</button>
-        <form v-if="managerForm && !allocationMode" class="space-y-3 rounded border p-4 dark:border-dark-600" @submit.prevent="saveManager">
-          <div class="grid gap-3 md:grid-cols-2">
-            <div><label for="manager-user">{{ text('部门负责人', 'Department manager') }}</label><Select id="manager-user" :model-value="managerForm.user_id || null" :options="managerOptions" :searchable="true" :disabled="editingManager" :placeholder="text('搜索姓名、ID 或部门', 'Search name, ID or department')" @update:model-value="selectManager" /><p class="mt-1 text-xs text-gray-500">{{ text('选择已绑定的平台成员，默认勾选其所在部门。', 'Select a linked member; their departments are selected by default.') }}</p></div>
-            <label>{{ text('最大累计可分配额度', 'Maximum cumulative allocation') }}<input data-testid="manager-limit" v-model.number="managerLimit" class="input" type="number" :min="managerForm.used_cents / 100" max="1000000000" step="0.01" required /></label>
-          </div>
-          <label class="block"><input v-model="managerForm.enabled" type="checkbox" /> {{ text('允许分配额度', 'Allow quota allocation') }}</label>
-          <p class="text-sm">{{ text('选择当前应用下负责的部门（包含子部门）；其它应用的授权会保留。', 'Select managed departments in this app, including descendants. Assignments in other apps are retained.') }}</p>
-          <details open class="rounded-lg border p-3 dark:border-dark-600">
-            <summary class="cursor-pointer text-sm font-medium">{{ text('负责部门', 'Managed departments') }} · {{ text('已选', 'Selected') }} {{ managerForm.departments.filter(d => d.app_id === selectedApp).length }}</summary>
-            <label class="my-3 block text-sm">{{ text('搜索部门名称或 ID', 'Search department name or ID') }}<input v-model="managerDepartmentSearch" data-testid="manager-department-search" type="search" class="input mt-1" /></label>
-            <div class="max-h-80 overflow-auto" data-testid="manager-departments">
-              <div v-for="dept in managerDepartmentRows" :key="dept.id" class="flex items-center gap-1 py-1 text-sm" :style="{ paddingLeft: `${dept.depth * 16}px` }">
-                <button v-if="dept.hasChildren" type="button" class="shrink-0 rounded p-1" :aria-expanded="managerExpandedDepartments.has(dept.id)" :aria-label="`${text('展开/收起权限部门', 'Expand/collapse managed department')} ${dept.name}`" @click="toggleManagerCollapse(dept.id)">{{ managerExpandedDepartments.has(dept.id) ? '▾' : '▸' }}</button>
-                <span v-else class="w-6 shrink-0" />
-                <label><input type="checkbox" :checked="managerForm.departments.some(d => d.app_id === selectedApp && d.department_id === dept.id)" @change="toggleDepartment(dept.id, ($event.target as HTMLInputElement).checked)" /> {{ dept.name }}</label>
-              </div>
-              <p v-if="!managerDepartmentRows.length" class="py-3 text-gray-500">{{ text('无匹配部门', 'No matching departments') }}</p>
-            </div>
-          </details>
-          <div class="flex gap-3"><button class="btn btn-primary" :disabled="busy || !managerForm.user_id">{{ text('保存负责人', 'Save manager') }}</button><button type="button" class="btn btn-secondary" @click="managerForm = null">{{ text('取消', 'Cancel') }}</button></div>
-        </form>
+        <p class="text-sm text-gray-500">{{ isAdmin ? text('系统管理员可为全部组织的成员充值。', 'System administrators can credit members in all organizations.') : text('总额度跨应用、跨部门累计；0 表示不能分配。', 'The cumulative budget covers all applications and departments. Zero allows no allocation.') }}</p>
       </section>
 
       <section ref="grantPanel" v-if="allocationMode && grantMember" class="card space-y-3 p-5" role="region" :aria-label="text('分配额度', 'Allocate quota')">
@@ -131,7 +108,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Select from '@/components/common/Select.vue'
+import { buildDingTalkDepartmentRows } from '@/utils/dingtalkDepartments'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { startOAuthBinding } from '@/api/user'
 import { useAuthStore } from '@/stores/auth'
@@ -156,24 +133,7 @@ const selectedDepartment = ref(0)
 const directory = ref<DingTalkDirectory>({ departments: [], members: [], synced_at: null })
 const staleDirectory = computed(() => !directory.value.synced_at || Date.now() - Date.parse(directory.value.synced_at) >= 86400000)
 const expandedDepartments = ref(new Set<number>())
-const departmentRows = computed(() => {
-  const ds = directory.value.departments
-  const byID = new Map(ds.map(d => [d.id, d]))
-  const children = new Map<number, typeof ds>()
-  for (const d of ds) { const list = children.get(d.parent_id) || []; list.push(d); children.set(d.parent_id, list) }
-  const result: { id: number; name: string; depth: number; hasChildren: boolean }[] = []
-  const seen = new Set<number>()
-  const stack = ds.filter(d => !byID.has(d.parent_id) || d.id === d.parent_id).reverse().map(d => ({ d, depth: 0 }))
-  while (stack.length) {
-    const { d, depth } = stack.pop()!
-    if (seen.has(d.id)) continue
-    seen.add(d.id)
-    const nested = (children.get(d.id) || []).filter(c => c.id !== d.id)
-    result.push({ id: d.id, name: d.name, depth, hasChildren: nested.length > 0 })
-    for (let i = nested.length - 1; i >= 0; i--) stack.push({ d: nested[i]!, depth: depth + 1 })
-  }
-  return result
-})
+const departmentRows = computed(() => buildDingTalkDepartmentRows(directory.value.departments))
 const visibleDepartmentRows = computed(() => {
   let hiddenBelow = Infinity
   return departmentRows.value.filter(d => {
@@ -186,39 +146,10 @@ function toggleCollapse(id: number) {
   if (expandedDepartments.value.has(id)) expandedDepartments.value.delete(id)
   else expandedDepartments.value.add(id)
 }
-const managerDepartmentSearch = ref('')
-const managerExpandedDepartments = ref(new Set<number>())
-watch(selectedApp, () => { expandedDepartments.value.clear(); managerExpandedDepartments.value.clear(); managerDepartmentSearch.value = '' })
-function matchingDepartmentIDs(query: string) {
-  const matches = new Set<number>()
-  const ancestors: number[] = []
-  for (const d of departmentRows.value) {
-    ancestors.length = d.depth
-    if (`${d.name} ${d.id}`.toLocaleLowerCase().includes(query)) { matches.add(d.id); ancestors.forEach(id => matches.add(id)) }
-    ancestors.push(d.id)
-  }
-  return matches
-}
-const managerDepartmentRows = computed(() => {
-  const query = managerDepartmentSearch.value.trim().toLocaleLowerCase()
-  const matches = query ? matchingDepartmentIDs(query) : null
-  let hiddenBelow = Infinity
-  return departmentRows.value.filter(d => {
-    if (d.depth > hiddenBelow) return false
-    hiddenBelow = managerExpandedDepartments.value.has(d.id) ? Infinity : d.depth
-    return !matches || matches.has(d.id)
-  })
-})
-watch(managerDepartmentSearch, query => {
-  if (query.trim()) for (const id of matchingDepartmentIDs(query.trim().toLocaleLowerCase())) managerExpandedDepartments.value.add(id)
-})
-function toggleManagerCollapse(id: number) {
-  if (managerExpandedDepartments.value.has(id)) managerExpandedDepartments.value.delete(id)
-  else managerExpandedDepartments.value.add(id)
-}
+watch(selectedApp, () => { expandedDepartments.value.clear() })
 const memberSearch = ref('')
 const memberPage = ref(1)
-const memberPageSize = 50
+const memberPageSize = 20
 const selectedDepartmentScope = computed(() => {
   const children = new Map<number, number[]>()
   for (const d of directory.value.departments) { const ids = children.get(d.parent_id) || []; ids.push(d.id); children.set(d.parent_id, ids) }
@@ -242,31 +173,9 @@ const members = computed(() => {
 })
 const pagedMembers = computed(() => members.value.slice((memberPage.value - 1) * memberPageSize, memberPage.value * memberPageSize))
 watch([memberSearch, selectedDepartment, directory], () => { memberPage.value = 1 })
-const managerOptions = computed(() => {
-  const grouped = new Map<number, { value: number; label: string; description: string }>()
-  for (const m of directory.value.members) {
-    if (!m.user_id || m.user_id === auth.user?.id) continue
-    const department = departmentName(selectedApp.value, m.department_id)
-    const existing = grouped.get(m.user_id)
-    if (existing) existing.description += ` ${department}`
-    else grouped.set(m.user_id, { value: m.user_id, label: `${m.name} (#${m.user_id})`, description: `${m.staff_id} ${department}` })
-  }
-  if (managerForm.value?.user_id && !grouped.has(managerForm.value.user_id)) grouped.set(managerForm.value.user_id, { value: managerForm.value.user_id, label: managerForm.value.name || `#${managerForm.value.user_id}`, description: '' })
-  return [...grouped.values()]
-})
-function selectManager(value: string | number | boolean | null) {
-  if (!managerForm.value || editingManager.value || typeof value !== 'number') return
-  const existing = managers.value.find(m => m.user_id === value)
-  if (existing) { editManager(existing); return }
-  managerForm.value.user_id = value
-  managerForm.value.departments = [...new Set(directory.value.members.filter(m => m.user_id === value).map(m => m.department_id))].map(id => ({ app_id: selectedApp.value, department_id: id }))
-}
 const managers = ref<DingTalkManager[]>([])
 const displayedManagers = computed(() => allocationMode.value && isAdmin.value ? [] : managers.value)
 const grants = ref<DingTalkGrant[]>([])
-const managerForm = ref<DingTalkManager | null>(null)
-const managerLimit = ref(500)
-const editingManager = ref(false)
 const grantPanel = ref<HTMLElement | null>(null)
 const grantMember = ref<DingTalkMember | null>(null)
 const grantAmount = ref(1)
@@ -327,18 +236,6 @@ async function syncDirectory() {
     await pollSync(app)
   })
 }
-function editManager(manager?: DingTalkManager) {
-  managerDepartmentSearch.value = ''; managerExpandedDepartments.value.clear()
-  editingManager.value = !!manager
-  managerForm.value = manager ? JSON.parse(JSON.stringify(manager)) : { user_id: 0, limit_cents: 50000, used_cents: 0, enabled: true, departments: [] }
-  managerLimit.value = (manager?.limit_cents ?? 50000) / 100
-}
-function toggleDepartment(id: number, checked: boolean) {
-  if (!managerForm.value) return
-  managerForm.value.departments = managerForm.value.departments.filter(d => d.app_id !== selectedApp.value || d.department_id !== id)
-  if (checked) managerForm.value.departments.push({ app_id: selectedApp.value, department_id: id })
-}
-async function saveManager() { await perform(async () => { if (!managerForm.value) return; await api.saveManager({ ...managerForm.value, limit_cents: Math.round(managerLimit.value * 100) }); managerForm.value = null; await refreshAccounting(); notice.value = text('负责人权限和额度已保存', 'Manager permissions and budget saved') }) }
 async function openGrant(member: DingTalkMember) { if (pendingGrant.value) return; grantMember.value = member; grantApp.value = selectedApp.value; grantAmount.value = 1; await nextTick(); grantPanel.value?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }) }
 async function submitGrant() {
   await perform(async () => {
