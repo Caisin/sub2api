@@ -163,6 +163,9 @@ export default {
 
   // Navigation
   nav: {
+    organizationQuota: 'Organization quota allocation',
+    organizationStatistics: 'Organization quota statistics',
+    dingtalkManagement: 'DingTalk management',
     dingtalkOrganization: 'DingTalk organization',
     dashboard: 'Dashboard',
     announcements: 'Announcements',

@@ -1,9 +1,7 @@
 package handler
 
 import (
-	"context"
 	"database/sql"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -140,24 +138,30 @@ func (h *DingTalkOrganizationHandler) Sync(c *gin.Context) {
 	if !dingTalkRequireAdmin(c) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Minute)
-	defer cancel()
-	cfg, err := h.settings.GetDingTalkOAuthConfigForApp(ctx, c.Param("app"))
+	cfg, err := h.settings.GetDingTalkOAuthConfigForApp(c.Request.Context(), c.Param("app"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	ds, ms, err := h.auth.dingTalkClient(cfg).ReadOrganization(ctx)
+	job, err := h.organization.StartSync(c.Request.Context(), c.Param("app"), h.auth.dingTalkClient(cfg).ReadOrganization)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if err = h.organization.ReplaceDirectory(ctx, c.Param("app"), ds, ms); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, gin.H{"departments": len(ds), "members": len(ms)})
+	response.Accepted(c, job)
 }
+func (h *DingTalkOrganizationHandler) SyncStatus(c *gin.Context) {
+	if !dingTalkRequireAdmin(c) {
+		return
+	}
+	job, err := h.organization.SyncStatus(c.Request.Context(), c.Param("app"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, job)
+}
+
 func (h *DingTalkOrganizationHandler) Managers(c *gin.Context) {
 	actor, admin, ok := dingTalkActor(c)
 	if !ok {
@@ -174,7 +178,7 @@ func (h *DingTalkOrganizationHandler) SaveManager(c *gin.Context) {
 	if !dingTalkRequireAdmin(c) {
 		return
 	}
-	var req service.DingTalkManager
+	req := service.DingTalkManager{LimitCents: 50000}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid manager configuration")
 		return

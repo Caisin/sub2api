@@ -188,6 +188,19 @@ const routes: RouteRecordRaw[] = [
 
   // ==================== User Routes ====================
   {
+    path: '/organization/quota',
+    name: 'DingTalkQuota',
+    component: () => import('@/views/user/DingTalkOrganizationView.vue'),
+    props: { mode: 'allocation' },
+    meta: { requiresAuth: true, title: 'Organization quota allocation', titleKey: 'nav.organizationQuota' }
+  },
+  {
+    path: '/organization/statistics',
+    name: 'DingTalkStatistics',
+    component: () => import('@/views/user/DingTalkStatisticsView.vue'),
+    meta: { requiresAuth: true, title: 'Organization quota statistics', titleKey: 'nav.organizationStatistics' }
+  },
+  {
     path: '/organization/dingtalk',
     name: 'DingTalkOrganization',
     component: () => import('@/views/user/DingTalkOrganizationView.vue'),

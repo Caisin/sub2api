@@ -55,6 +55,11 @@ func TestDingTalkOrganizationPostgres(t *testing.T) {
 	require.NoError(t, err)
 	_, err = scoped.Exec(string(migration))
 	require.NoError(t, err)
+	migration, err = os.ReadFile(filepath.Join("..", "..", "migrations", "240_dingtalk_sync_jobs.sql"))
+	require.NoError(t, err)
+	_, err = scoped.Exec(string(migration))
+	require.NoError(t, err)
+
 	s := NewDingTalkOrganizationService(scoped, nil)
 	ctx := context.Background()
 	ds := []DingTalkDepartment{{ID: 1, Name: "Corp"}, {ID: 2, ParentID: 1, Name: "Team"}, {ID: 3, ParentID: 2, Name: "Child"}, {ID: 4, ParentID: 1, Name: "Other"}}
@@ -66,6 +71,33 @@ func TestDingTalkOrganizationPostgres(t *testing.T) {
 	require.Len(t, dir.Departments, 2)
 	require.Len(t, dir.Members, 1)
 	require.EqualValues(t, 2, dir.Members[0].UserID)
+	// Real SQL checks timestamp boundaries, permission scope and background publication.
+	_, err = scoped.Exec(`CREATE TABLE usage_logs(user_id BIGINT,actual_cost NUMERIC(20,8),created_at TIMESTAMPTZ);
+ INSERT INTO usage_logs VALUES(2,1.25,'2026-09-01T00:00:00Z'),(2,20,'2026-09-02T00:00:00Z'),(3,100,'2026-09-01T00:00:00Z')`)
+	require.NoError(t, err)
+	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	stats, err := s.Statistics(ctx, []DingTalkStatisticsApp{{ID: "a", Name: "Company", CompanyID: "corp"}}, 1, false, start, start.Add(24*time.Hour), "", "", 0)
+	require.NoError(t, err)
+	require.Equal(t, 1.25, stats.Total.Cost)
+	require.Len(t, stats.Users, 1)
+	require.Len(t, stats.Departments, 2)
+	noScope, err := s.Statistics(ctx, []DingTalkStatisticsApp{{ID: "a", CompanyID: "corp"}}, 3, false, start, start.Add(24*time.Hour), "", "", 0)
+	require.NoError(t, err)
+	require.Empty(t, noScope.Users)
+	job, err := s.StartSync(ctx, "a", func(context.Context) ([]DingTalkDepartment, []DingTalkDirectoryMember, error) { return ds, ms, nil })
+	require.NoError(t, err)
+	require.Equal(t, "running", job.Status)
+	require.Eventually(t, func() bool { j, e := s.SyncStatus(ctx, "a"); return e == nil && j.Status == "succeeded" }, 5*time.Second, 10*time.Millisecond)
+	job, err = s.StartSync(ctx, "a", func(context.Context) ([]DingTalkDepartment, []DingTalkDirectoryMember, error) {
+		return nil, nil, fmt.Errorf("upstream failure")
+	})
+	require.NoError(t, err)
+	require.Equal(t, "running", job.Status)
+	require.Eventually(t, func() bool { j, e := s.SyncStatus(ctx, "a"); return e == nil && j.Status == "failed" }, 5*time.Second, 10*time.Millisecond)
+	preserved, err := s.Directory(ctx, "a", 1, false)
+	require.NoError(t, err)
+	require.Len(t, preserved.Members, 1)
+
 	grant := DingTalkQuotaGrant{ActorID: 1, TargetID: 2, AppID: "a", DepartmentID: 3, AmountCents: 6000, RequestID: "allocation-test-0001"}
 	outside := grant
 	outside.DepartmentID = 4

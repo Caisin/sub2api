@@ -97,6 +97,10 @@ func DingTalkDepartmentScope(departments []DingTalkDepartment, roots []int64) ma
 }
 
 func (s *DingTalkOrganizationService) ReplaceDirectory(ctx context.Context, app string, ds []DingTalkDepartment, ms []DingTalkDirectoryMember) error {
+	return s.replaceDirectory(ctx, app, ds, ms, "")
+}
+
+func (s *DingTalkOrganizationService) replaceDirectory(ctx context.Context, app string, ds []DingTalkDepartment, ms []DingTalkDirectoryMember, jobID string) error {
 	if len(ds) == 0 {
 		return infraerrors.BadRequest("EMPTY_DIRECTORY", "DingTalk returned no root department")
 	}
@@ -109,16 +113,42 @@ func (s *DingTalkOrganizationService) ReplaceDirectory(ctx context.Context, app 
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('dingtalk:' || $1))`, app); err != nil {
 		return err
 	}
+	// Fence publication against a newer job reclaiming an expired lease.
+	if jobID != "" {
+		var current bool
+		if err = tx.QueryRowContext(ctx, `SELECT job_id=$2 AND status='running' AND expires_at>NOW() FROM dingtalk_sync_jobs WHERE app_id=$1 FOR UPDATE`, app, jobID).Scan(&current); err != nil {
+			return err
+		}
+		if !current {
+			return infraerrors.Conflict("SYNC_SUPERSEDED", "Synchronization was superseded; retry")
+		}
+	}
 	if _, err = tx.ExecContext(ctx, `DELETE FROM dingtalk_departments WHERE app_id=$1`, app); err != nil {
 		return err
 	}
-	for _, d := range ds {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO dingtalk_departments(app_id,department_id,parent_id,name) VALUES($1,$2,$3,$4)`, app, d.ID, d.ParentID, d.Name); err != nil {
+	// Batch inserts keep large directories from requiring one database round trip per member.
+	for offset := 0; offset < len(ds); offset += 1000 {
+		end := min(offset+1000, len(ds))
+		ids, parents, names := []int64{}, []int64{}, []string{}
+		for _, d := range ds[offset:end] {
+			ids = append(ids, d.ID)
+			parents = append(parents, d.ParentID)
+			names = append(names, d.Name)
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO dingtalk_departments(app_id,department_id,parent_id,name) SELECT $1,* FROM UNNEST($2::bigint[],$3::bigint[],$4::text[])`, app, pq.Array(ids), pq.Array(parents), pq.Array(names)); err != nil {
 			return err
 		}
 	}
-	for _, m := range ms {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO dingtalk_members(app_id,department_id,union_id,staff_id,name) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`, app, m.DepartmentID, m.UnionID, m.StaffID, m.Name); err != nil {
+	for offset := 0; offset < len(ms); offset += 1000 {
+		end := min(offset+1000, len(ms))
+		departments, unions, staff, names := []int64{}, []string{}, []string{}, []string{}
+		for _, m := range ms[offset:end] {
+			departments = append(departments, m.DepartmentID)
+			unions = append(unions, m.UnionID)
+			staff = append(staff, m.StaffID)
+			names = append(names, m.Name)
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO dingtalk_members(app_id,department_id,union_id,staff_id,name) SELECT $1,* FROM UNNEST($2::bigint[],$3::text[],$4::text[],$5::text[]) ON CONFLICT DO NOTHING`, app, pq.Array(departments), pq.Array(unions), pq.Array(staff), pq.Array(names)); err != nil {
 			return err
 		}
 	}

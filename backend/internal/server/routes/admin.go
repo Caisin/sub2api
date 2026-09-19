@@ -42,6 +42,8 @@ func RegisterAdminRoutes(
 		organization.PUT("/apps", h.DingTalkOrganization.SaveApps)
 		organization.GET("/apps/:app/directory", h.DingTalkOrganization.Directory)
 		organization.POST("/apps/:app/sync", h.DingTalkOrganization.Sync)
+		organization.GET("/apps/:app/sync", h.DingTalkOrganization.SyncStatus)
+		organization.GET("/statistics", h.DingTalkOrganization.Statistics)
 		organization.GET("/managers", h.DingTalkOrganization.Managers)
 		organization.PUT("/managers", h.DingTalkOrganization.SaveManager)
 		organization.GET("/grants", h.DingTalkOrganization.Grants)

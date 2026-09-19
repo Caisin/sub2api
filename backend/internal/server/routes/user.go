@@ -28,6 +28,7 @@ func RegisterUserRoutes(
 		// Department leaders receive only the organization-scoped operations.
 		organization := authenticated.Group("/organization/dingtalk")
 		organization.GET("/apps", h.DingTalkOrganization.Apps)
+		organization.GET("/statistics", h.DingTalkOrganization.Statistics)
 		organization.GET("/apps/:app/directory", h.DingTalkOrganization.Directory)
 		organization.GET("/managers", h.DingTalkOrganization.Managers)
 		organization.GET("/grants", h.DingTalkOrganization.Grants)
