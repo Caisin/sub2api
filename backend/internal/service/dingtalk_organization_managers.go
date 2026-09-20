@@ -106,7 +106,9 @@ func (s *DingTalkOrganizationService) IncreaseManagerBudget(ctx context.Context,
 		return nil, err
 	}
 	result.ManagerID, result.AmountCents = id, amount
-	err = tx.QueryRowContext(ctx, `UPDATE dingtalk_manager_budgets b SET limit_cents=limit_cents+$2,updated_at=NOW() WHERE user_id=$1 AND limit_cents<=$3-$2 AND EXISTS(SELECT 1 FROM users u WHERE u.id=b.user_id AND u.deleted_at IS NULL AND u.status='active' AND u.role<>'admin') RETURNING limit_cents`, id, amount, maxDingTalkBudgetCents).Scan(&result.LimitCentsAfter)
+	// PostgreSQL resolves the WHERE expression before the assignment, so the
+	// subtraction needs explicit types even though limit_cents is a BIGINT.
+	err = tx.QueryRowContext(ctx, `UPDATE dingtalk_manager_budgets b SET limit_cents=limit_cents+$2::bigint,updated_at=NOW() WHERE user_id=$1 AND limit_cents<=$3::bigint-$2::bigint AND EXISTS(SELECT 1 FROM users u WHERE u.id=b.user_id AND u.deleted_at IS NULL AND u.status='active' AND u.role<>'admin') RETURNING limit_cents`, id, amount, maxDingTalkBudgetCents).Scan(&result.LimitCentsAfter)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, infraerrors.BadRequest("INVALID_MANAGER_BUDGET", "Manager is unavailable or the resulting budget exceeds 1,000,000,000")
 	}

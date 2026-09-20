@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -199,7 +200,7 @@ func TestDingTalkOrganizationPostgres(t *testing.T) {
 	managers, err = s.Managers(ctx, 1, false)
 	require.NoError(t, err)
 	require.EqualValues(t, 12000, managers[0].UsedCents)
-	// Revocation and stale directories fail closed.
+	// Revocation still blocks allocation.
 	m := managers[0]
 	m.Enabled = false
 	require.NoError(t, s.SaveManager(ctx, m))
@@ -210,9 +211,13 @@ func TestDingTalkOrganizationPostgres(t *testing.T) {
 	require.NoError(t, s.SaveManager(ctx, m))
 	_, err = scoped.Exec(`UPDATE dingtalk_directory_snapshots SET synced_at=NOW()-INTERVAL '25 hours'`)
 	require.NoError(t, err)
+	// Old snapshots still allow grants within the authorized organization.
 	g.RequestID = "stale-grant-00001"
+	g.AmountCents = 1000
 	_, err = s.Grant(ctx, g, false)
-	require.Error(t, err)
+	require.NoError(t, err)
+	require.NoError(t, scoped.QueryRow(`SELECT balance FROM users WHERE id=2`).Scan(&balance))
+	require.Equal(t, 130.0, balance)
 	// Concurrent budget increases add to the latest cap; duplicate request IDs apply once.
 	initial := m.LimitCents
 	var increases sync.WaitGroup
@@ -228,7 +233,7 @@ func TestDingTalkOrganizationPostgres(t *testing.T) {
 	budgets, e := s.Managers(ctx, 1, false)
 	require.NoError(t, e)
 	require.Equal(t, initial+2000, budgets[0].LimitCents)
-	require.EqualValues(t, 12000, budgets[0].UsedCents)
+	require.EqualValues(t, 13000, budgets[0].UsedCents)
 	// Changing permissions with an older browser snapshot cannot reduce the cap.
 	permissions := []DingTalkManagerDepartment{{AppID: "a", DepartmentID: 2}}
 	require.NoError(t, s.PatchManager(ctx, 1, DingTalkManagerPatch{Departments: &permissions}))
@@ -256,8 +261,8 @@ func TestDingTalkOrganizationPostgres(t *testing.T) {
 	require.EqualValues(t, 50000, managerPage[0].LimitCents)
 	history, historyCount, e := s.ManagerGrants(ctx, 1, 6)
 	require.NoError(t, e)
-	require.EqualValues(t, 107, historyCount)
-	require.Len(t, history, 7)
+	require.EqualValues(t, 108, historyCount)
+	require.Len(t, history, 8)
 
 	// A linked manager can credit themselves exactly once within their authorized department.
 	_, err = scoped.Exec(`INSERT INTO auth_identities VALUES(1,'dingtalk','dingtalk:a','union-manager'); INSERT INTO dingtalk_members(app_id,department_id,union_id,staff_id,name) VALUES('a',3,'union-manager','manager','Manager'); UPDATE dingtalk_directory_snapshots SET synced_at=NOW()`)
@@ -273,6 +278,32 @@ func TestDingTalkOrganizationPostgres(t *testing.T) {
 	require.Equal(t, 10.0, balance)
 	budgets, err = s.Managers(ctx, 1, false)
 	require.NoError(t, err)
-	require.EqualValues(t, 13000, budgets[0].UsedCents)
+	require.EqualValues(t, 14000, budgets[0].UsedCents)
+
+	t.Run("budget increase with PostgreSQL parameter inference", func(t *testing.T) {
+		require.NoError(t, s.CreateManager(ctx, DingTalkManager{UserID: 4, LimitCents: 50000, Enabled: true}))
+		increase, err := s.IncreaseManagerBudget(ctx, 3, 4, 50000, "budget-500-request-0001")
+		require.NoError(t, err)
+		require.EqualValues(t, 100000, increase.LimitCentsAfter)
+		replay, err := s.IncreaseManagerBudget(ctx, 3, 4, 50000, "budget-500-request-0001")
+		require.NoError(t, err)
+		require.Equal(t, increase.ID, replay.ID)
+		_, err = s.IncreaseManagerBudget(ctx, 3, 4, 100, "budget-500-request-0001")
+		require.Equal(t, "BUDGET_REQUEST_CONFLICT", infraerrors.Reason(err))
+		// The cap exceeds int32: both subtraction parameters must stay BIGINT.
+		increase, err = s.IncreaseManagerBudget(ctx, 3, 4, maxDingTalkBudgetCents-100000, "budget-max-request-0001")
+		require.NoError(t, err)
+		require.Equal(t, maxDingTalkBudgetCents, increase.LimitCentsAfter)
+		_, err = s.IncreaseManagerBudget(ctx, 3, 4, 1, "budget-over-request-0001")
+		require.Equal(t, "INVALID_MANAGER_BUDGET", infraerrors.Reason(err))
+		var limit, used, count int64
+		require.NoError(t, scoped.QueryRow(`SELECT limit_cents,used_cents FROM dingtalk_manager_budgets WHERE user_id=4`).Scan(&limit, &used))
+		require.Equal(t, maxDingTalkBudgetCents, limit)
+		require.Zero(t, used)
+		require.NoError(t, scoped.QueryRow(`SELECT balance FROM users WHERE id=4`).Scan(&balance))
+		require.Zero(t, balance)
+		require.NoError(t, scoped.QueryRow(`SELECT COUNT(*) FROM dingtalk_manager_budget_increases WHERE manager_id=4`).Scan(&count))
+		require.EqualValues(t, 2, count)
+	})
 
 }

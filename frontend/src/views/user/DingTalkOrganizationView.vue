@@ -51,7 +51,7 @@
         </div>
         <p v-if="syncJob?.status === 'running'" role="status" class="text-sm text-primary-600">{{ text('正在后台同步，可离开此页面，完成后会自动更新。', 'Sync is running in the background. You may leave this page; the directory refreshes when complete.') }}</p>
         <p v-if="syncJob?.status === 'failed'" role="alert" class="text-sm text-red-600">{{ text('同步失败，可点击同步重试：', 'Sync failed. Click sync to retry: ') }}{{ syncJob.error }}</p>
-        <p class="text-sm text-gray-500">{{ text('最近同步：', 'Last synced: ') }}{{ directory.synced_at ? new Date(directory.synced_at).toLocaleString() : text('尚未同步', 'Never') }}. {{ text('分配额度要求组织数据在 24 小时内同步。', 'Quota allocation requires a directory synced within 24 hours.') }}</p>
+        <p class="text-sm text-gray-500">{{ text('最近同步：', 'Last synced: ') }}{{ directory.synced_at ? new Date(directory.synced_at).toLocaleString() : text('尚未同步', 'Never') }}</p>
         <div v-if="selectedDepartmentPath.length" class="flex flex-wrap items-center gap-2 rounded-lg bg-primary-50 p-3 text-sm dark:bg-dark-700" data-testid="selected-department-path">
           <span>{{ text('当前部门：', 'Current department: ') }}{{ selectedDepartmentPath.map(d => d.name).join(' / ') }}</span>
           <button class="btn btn-secondary" type="button" @click="locateDepartment">{{ text('定位选中部门', 'Locate selected department') }}</button>
@@ -72,7 +72,7 @@
               <thead><tr><th class="p-2">{{ text('成员', 'Member') }}</th><th class="p-2">{{ text('平台用户', 'Platform user') }}</th><th class="p-2">{{ text('余额', 'Balance') }}</th><th v-if="allocationMode" class="p-2">{{ text('操作', 'Action') }}</th></tr></thead>
               <tbody><tr v-for="member in pagedMembers" :key="`${member.department_id}-${member.staff_id}`" class="border-t dark:border-dark-600">
                 <td class="p-2">{{ member.name }}<p class="text-xs text-gray-500">{{ departmentName(selectedApp, member.department_id) }}</p></td><td class="p-2">{{ member.user_id || text('尚未绑定', 'Not linked') }}</td><td class="p-2">{{ member.user_id ? money(member.balance) : '—' }}</td>
-                <td v-if="allocationMode" class="p-2"><button class="btn btn-secondary" :disabled="busy || !member.user_id || (isAdmin && member.user_id === auth.user?.id) || staleDirectory" @click="openGrant(member)">{{ text('增加额度', 'Add quota') }}</button></td>
+                <td v-if="allocationMode" class="p-2"><button class="btn btn-secondary" :disabled="busy || !member.user_id || (isAdmin && member.user_id === auth.user?.id)" @click="openGrant(member)">{{ text('增加额度', 'Add quota') }}</button></td>
               </tr></tbody>
             </table>
             <div v-if="members.length > memberPageSize" class="mt-3 flex items-center gap-3 text-sm"><button class="btn btn-secondary" :disabled="memberPage === 1" @click="memberPage--">{{ text('上一页', 'Previous') }}</button><span>{{ memberPage }} / {{ Math.ceil(members.length / memberPageSize) }} · {{ text('每页 20 条', '20 per page') }} · {{ members.length }} {{ text('名成员', 'members') }}</span><button class="btn btn-secondary" :disabled="memberPage * memberPageSize >= members.length" @click="memberPage++">{{ text('下一页', 'Next') }}</button></div>
@@ -95,7 +95,7 @@
         <h2 class="font-semibold">{{ text('为成员增加额度：', 'Add quota for: ') }}{{ grantMember.name }} (#{{ grantMember.user_id }})</h2>
         <form class="flex flex-wrap items-end gap-3" @submit.prevent="submitGrant">
           <label>{{ text('增加余额金额', 'Balance to add') }}<input data-testid="grant-amount" v-model.number="grantAmount" type="number" min="0.01" max="1000000000" step="0.01" required class="input" :disabled="!!pendingGrant" /></label>
-          <button class="btn btn-primary" :disabled="busy || staleDirectory">{{ pendingGrant ? text('重试同一笔分配', 'Retry this allocation') : text('确认增加额度', 'Confirm allocation') }}</button>
+          <button class="btn btn-primary" :disabled="busy">{{ pendingGrant ? text('重试同一笔分配', 'Retry this allocation') : text('确认增加额度', 'Confirm allocation') }}</button>
           <button type="button" class="btn btn-secondary" :disabled="busy || !!pendingGrant" @click="grantMember = null">{{ text('取消', 'Cancel') }}</button>
         </form>
         <p v-if="pendingGrant" class="text-sm text-gray-500">{{ text('重试将使用相同请求编号，避免重复入账。', 'Retries use the same request ID to prevent duplicate credits.') }}</p>
@@ -135,7 +135,6 @@ const choices = computed(() => [...(hasDefault.value ? [{ id: 'default', name: t
 const selectedApp = ref('')
 const selectedDepartment = ref(0)
 const directory = ref<DingTalkDirectory>({ departments: [], members: [], synced_at: null })
-const staleDirectory = computed(() => !directory.value.synced_at || Date.now() - Date.parse(directory.value.synced_at) >= 86400000)
 const expandedDepartments = ref(new Set<number>())
 const departmentRows = computed(() => buildDingTalkDepartmentRows(directory.value.departments))
 const departmentTree = ref<HTMLElement | null>(null)

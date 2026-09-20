@@ -391,13 +391,6 @@ func (s *DingTalkOrganizationService) Grant(ctx context.Context, g DingTalkQuota
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('dingtalk:' || $1))`, g.AppID); err != nil {
 		return nil, err
 	}
-	var fresh bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM dingtalk_directory_snapshots WHERE app_id=$1 AND synced_at > NOW()-INTERVAL '24 hours')`, g.AppID).Scan(&fresh); err != nil {
-		return nil, err
-	}
-	if !fresh {
-		return nil, infraerrors.Forbidden("DIRECTORY_STALE", "Sync the DingTalk organization before allocating quota (snapshot expires after 24 hours)")
-	}
 	if !admin {
 		var allowed bool
 		err = tx.QueryRowContext(ctx, `WITH RECURSIVE scope(id) AS (SELECT d.department_id FROM dingtalk_departments d JOIN dingtalk_department_managers m ON m.app_id=d.app_id AND m.department_id=d.department_id WHERE m.user_id=$1 AND m.app_id=$2 UNION SELECT d.department_id FROM dingtalk_departments d JOIN scope s ON d.parent_id=s.id WHERE d.app_id=$2) SELECT EXISTS(SELECT 1 FROM scope WHERE id=$3)`, g.ActorID, g.AppID, g.DepartmentID).Scan(&allowed)

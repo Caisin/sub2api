@@ -32,7 +32,6 @@ func TestDingTalkSelfGrantUsesBudgetScopeAndIdempotency(t *testing.T) {
 				mock.ExpectQuery("SELECT limit_cents,used_cents,enabled").WithArgs(int64(2)).WillReturnRows(sqlmock.NewRows([]string{"limit", "used", "enabled"}).AddRow(50000, used, scenario != "revoked"))
 				if scenario != "exceeds-budget" && scenario != "revoked" {
 					mock.ExpectExec("SELECT pg_advisory_xact_lock").WithArgs("a").WillReturnResult(sqlmock.NewResult(0, 1))
-					mock.ExpectQuery("SELECT EXISTS.*dingtalk_directory_snapshots").WithArgs("a").WillReturnRows(sqlmock.NewRows([]string{"fresh"}).AddRow(true))
 					mock.ExpectQuery("WITH RECURSIVE scope").WithArgs(int64(2), "a", int64(3)).WillReturnRows(sqlmock.NewRows([]string{"allowed"}).AddRow(scenario != "outside-scope"))
 					if scenario != "outside-scope" {
 						mock.ExpectQuery("SELECT EXISTS.*dingtalk_members").WithArgs("a", int64(3), int64(2), "dingtalk:a").WillReturnRows(sqlmock.NewRows([]string{"member"}).AddRow(scenario != "unlinked"))

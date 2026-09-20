@@ -154,6 +154,21 @@ describe('DingTalk organization quota', () => {
     expect(state.refreshUser).toHaveBeenCalledOnce()
     expect(wrapper.text()).not.toContain('Add manager')
   })
+  it.each([new Date(Date.now() - 3 * 86400000).toISOString(), null])('allows allocation regardless of the directory sync timestamp (%s)', async (syncedAt) => {
+    const data = await api.directory()
+    data.synced_at = syncedAt
+    const wrapper = mount(DingTalkOrganizationView, { props: { mode: 'allocation' } })
+    await flushPromises()
+    expect(button(wrapper, 'Add quota').attributes('disabled')).toBeUndefined()
+    expect(wrapper.text()).not.toContain('within 24 hours')
+    await button(wrapper, 'Add quota').trigger('click')
+    expect(button(wrapper, 'Confirm allocation').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-testid="grant-amount"]').setValue(10)
+    await wrapper.get('[role="region"] form').trigger('submit')
+    await flushPromises()
+    expect(api.grant).toHaveBeenCalledWith(expect.objectContaining({ target_id: 2, department_id: 3, amount: 10 }))
+    expect(wrapper.text()).toContain('Quota credited')
+  })
   it('keeps the selected department path visible and locates a collapsed nested department', async () => {
     const wrapper = mount(DingTalkOrganizationView)
     await flushPromises()
