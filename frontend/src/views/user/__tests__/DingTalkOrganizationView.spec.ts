@@ -10,6 +10,14 @@ vi.mock('@/api/dingtalk', () => ({ dingTalkAPI: () => api, publicDingTalkApps: v
 vi.mock('@/api/user', () => ({ startOAuthBinding: vi.fn() }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ locale: ref('en'), t: (key: string) => key }) }))
 vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
+vi.mock('@/components/common/BaseDialog.vue', () => ({
+  default: {
+    name: 'BaseDialog',
+    props: ['show', 'title'],
+    emits: ['close'],
+    template: '<div v-if="show" role="dialog"><h2>{{ title }}</h2><slot /></div>'
+  }
+}))
 
 enableAutoUnmount(afterEach)
 afterEach(() => vi.useRealTimers())
@@ -46,14 +54,14 @@ describe('DingTalk organization quota', () => {
     await button(wrapper, 'Child').trigger('click')
     await button(wrapper, 'Add quota').trigger('click')
     await wrapper.get('[data-testid="grant-amount"]').setValue(12.5)
-    await wrapper.get('[role="region"] form').trigger('submit')
+    await wrapper.get('[data-testid="grant-form"]').trigger('submit')
     await flushPromises()
     expect(api.grant).toHaveBeenCalledTimes(1)
     const input = api.grant.mock.calls[0][0]
     expect(input).toMatchObject({ app_id: 'a', department_id: 3, target_id: 2, amount: 12.5 })
     expect(input.request_id.length).toBeGreaterThan(15)
     expect(wrapper.get('[data-testid="grant-amount"]').attributes('disabled')).toBeDefined()
-    await wrapper.get('[role="region"] form').trigger('submit')
+    await wrapper.get('[data-testid="grant-form"]').trigger('submit')
     await flushPromises()
     expect(api.grant.mock.calls[1][0]).toEqual(input)
     expect(wrapper.text()).toContain('Quota credited')
@@ -149,7 +157,7 @@ describe('DingTalk organization quota', () => {
     expect(button(wrapper, 'Add quota').attributes('disabled')).toBeUndefined()
     await button(wrapper, 'Add quota').trigger('click')
     await wrapper.get('[data-testid="grant-amount"]').setValue(10)
-    await wrapper.get('[role="region"] form').trigger('submit'); await flushPromises()
+    await wrapper.get('[data-testid="grant-form"]').trigger('submit'); await flushPromises()
     expect(api.grant).toHaveBeenCalledWith(expect.objectContaining({ target_id: 1, department_id: 3, amount: 10 }))
     expect(state.refreshUser).toHaveBeenCalledOnce()
     expect(wrapper.text()).not.toContain('Add manager')
@@ -162,9 +170,11 @@ describe('DingTalk organization quota', () => {
     expect(button(wrapper, 'Add quota').attributes('disabled')).toBeUndefined()
     expect(wrapper.text()).not.toContain('within 24 hours')
     await button(wrapper, 'Add quota').trigger('click')
+    expect(wrapper.get('[data-testid="grant-amount"]').element.value).toBe('100')
+    expect(wrapper.find('[role="region"]').exists()).toBe(false)
     expect(button(wrapper, 'Confirm allocation').attributes('disabled')).toBeUndefined()
     await wrapper.get('[data-testid="grant-amount"]').setValue(10)
-    await wrapper.get('[role="region"] form').trigger('submit')
+    await wrapper.get('[data-testid="grant-form"]').trigger('submit')
     await flushPromises()
     expect(api.grant).toHaveBeenCalledWith(expect.objectContaining({ target_id: 2, department_id: 3, amount: 10 }))
     expect(wrapper.text()).toContain('Quota credited')

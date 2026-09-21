@@ -91,15 +91,27 @@
         <p class="text-sm text-gray-500">{{ isAdmin ? text('系统管理员可为全部组织的成员充值。', 'System administrators can credit members in all organizations.') : text('可为授权部门内的成员（包括自己）分配额度；总额度跨应用、跨部门累计。', 'Allocate to members, including yourself, within authorized departments. The budget is cumulative across apps and departments.') }}</p>
       </section>
 
-      <section ref="grantPanel" v-if="allocationMode && grantMember" class="card space-y-3 p-5" role="region" :aria-label="text('分配额度', 'Allocate quota')">
-        <h2 class="font-semibold">{{ text('为成员增加额度：', 'Add quota for: ') }}{{ grantMember.name }} (#{{ grantMember.user_id }})</h2>
-        <form class="flex flex-wrap items-end gap-3" @submit.prevent="submitGrant">
-          <label>{{ text('增加余额金额', 'Balance to add') }}<input data-testid="grant-amount" v-model.number="grantAmount" type="number" min="0.01" max="1000000000" step="0.01" required class="input" :disabled="!!pendingGrant" /></label>
-          <button class="btn btn-primary" :disabled="busy">{{ pendingGrant ? text('重试同一笔分配', 'Retry this allocation') : text('确认增加额度', 'Confirm allocation') }}</button>
-          <button type="button" class="btn btn-secondary" :disabled="busy || !!pendingGrant" @click="grantMember = null">{{ text('取消', 'Cancel') }}</button>
+      <BaseDialog
+        v-if="allocationMode && grantMember"
+        :show="true"
+        :title="text('增加额度', 'Add quota')"
+        width="narrow"
+        :show-close-button="!busy && !pendingGrant"
+        :close-on-escape="!busy && !pendingGrant"
+        @close="grantMember = null"
+      >
+        <form class="space-y-4" data-testid="grant-form" @submit.prevent="submitGrant">
+          <p class="font-medium">{{ text('为成员增加额度：', 'Add quota for: ') }}{{ grantMember.name }} (#{{ grantMember.user_id }})</p>
+          <label class="block">{{ text('增加余额金额', 'Balance to add') }}
+            <input data-testid="grant-amount" v-model.number="grantAmount" type="number" min="0.01" max="1000000000" step="0.01" required class="input mt-1" :disabled="!!pendingGrant" />
+          </label>
+          <p v-if="pendingGrant" class="text-sm text-gray-500">{{ text('重试将使用相同请求编号，避免重复入账。', 'Retries use the same request ID to prevent duplicate credits.') }}</p>
+          <div class="flex justify-end gap-3">
+            <button type="button" class="btn btn-secondary" :disabled="busy || !!pendingGrant" @click="grantMember = null">{{ text('取消', 'Cancel') }}</button>
+            <button class="btn btn-primary" :disabled="busy">{{ pendingGrant ? text('重试同一笔分配', 'Retry this allocation') : text('确认增加额度', 'Confirm allocation') }}</button>
+          </div>
         </form>
-        <p v-if="pendingGrant" class="text-sm text-gray-500">{{ text('重试将使用相同请求编号，避免重复入账。', 'Retries use the same request ID to prevent duplicate credits.') }}</p>
-      </section>
+      </BaseDialog>
 
       <section v-if="allocationMode" class="card p-5">
         <h2 class="mb-3 font-semibold">{{ text('最近 100 笔分配记录', 'Latest 100 allocations') }}</h2>
@@ -114,6 +126,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { buildDingTalkDepartmentRows, dingTalkDepartmentPath } from '@/utils/dingtalkDepartments'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import { startOAuthBinding } from '@/api/user'
 import { useAuthStore } from '@/stores/auth'
 import { dingTalkAPI, publicDingTalkApps, type DingTalkApp, type DingTalkDirectory, type DingTalkManager, type DingTalkMember, type DingTalkGrant, type DingTalkGrantInput, type DingTalkSyncJob } from '@/api/dingtalk'
@@ -187,9 +200,8 @@ watch([memberSearch, selectedDepartment, directory], () => { memberPage.value = 
 const managers = ref<DingTalkManager[]>([])
 const displayedManagers = computed(() => allocationMode.value && isAdmin.value ? [] : managers.value)
 const grants = ref<DingTalkGrant[]>([])
-const grantPanel = ref<HTMLElement | null>(null)
 const grantMember = ref<DingTalkMember | null>(null)
-const grantAmount = ref(1)
+const grantAmount = ref(100)
 const grantApp = ref('')
 const pendingGrant = ref<DingTalkGrantInput | null>(null)
 const loading = ref(true)
@@ -247,7 +259,7 @@ async function syncDirectory() {
     await pollSync(app)
   })
 }
-async function openGrant(member: DingTalkMember) { if (pendingGrant.value) return; grantMember.value = member; grantApp.value = selectedApp.value; grantAmount.value = 1; await nextTick(); grantPanel.value?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }) }
+function openGrant(member: DingTalkMember) { if (pendingGrant.value) return; grantMember.value = member; grantApp.value = selectedApp.value; grantAmount.value = 100 }
 async function submitGrant() {
   await perform(async () => {
     if (!grantMember.value) return
