@@ -504,6 +504,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/channels/models',
+    name: 'AdminModelManagement',
+    component: () => import('@/views/admin/ModelManagementView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Model Management',
+      titleKey: 'admin.channels.modelManagementTitle'
+    }
+  },
+  {
     path: '/admin/channels/monitor',
     name: 'AdminChannelMonitor',
     component: () => import('@/views/admin/ChannelMonitorView.vue'),

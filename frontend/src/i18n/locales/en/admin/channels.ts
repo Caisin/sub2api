@@ -44,6 +44,7 @@ export default {
     // Channel Management
     channels: {
       title: 'Channel Management',
+      modelManagementTitle: 'Model Management',
       description: 'Manage channels and custom model pricing',
       searchChannels: 'Search channels...',
       createChannel: 'Create Channel',
