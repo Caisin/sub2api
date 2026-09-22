@@ -11,7 +11,7 @@ import (
 
 func TestDingTalkAppsPersistenceSelectionAndRedaction(t *testing.T) {
 	repo := &panelRateLimitSettingRepo{values: map[string]string{}}
-	s := &SettingService{settingRepo: repo, cfg: &config.Config{}}
+	s := &SettingService{settingRepo: repo, cfg: &config.Config{DingTalk: config.DingTalkConnectConfig{BypassRegistration: true}}}
 	app := config.DingTalkAppConfig{ID: "engineering", Name: "Engineering", ClientID: "client-a", ClientSecret: "secret-a", RedirectURL: "https://example.com/api/v1/auth/oauth/dingtalk/callback", Enabled: true}
 	ctx := context.Background()
 	require.NoError(t, s.SaveDingTalkApps(ctx, []config.DingTalkAppConfig{app}))
@@ -31,7 +31,7 @@ func TestDingTalkAppsPersistenceSelectionAndRedaction(t *testing.T) {
 	require.Equal(t, "client-a", cfg.ClientID)
 	require.Equal(t, "secret-a", cfg.ClientSecret)
 	require.Equal(t, "internal_only", cfg.CorpRestrictionPolicy)
-	require.False(t, cfg.BypassRegistration)
+	require.True(t, cfg.BypassRegistration)
 	_, err = s.GetDingTalkOAuthConfigForApp(ctx, "unknown")
 	require.Error(t, err)
 	public[0].ClientID = "replacement"
@@ -43,4 +43,17 @@ func TestDingTalkAppsPersistenceSelectionAndRedaction(t *testing.T) {
 	require.Error(t, err)
 	app.ID = "default"
 	require.Error(t, s.SaveDingTalkApps(ctx, []config.DingTalkAppConfig{app}))
+}
+
+func TestDingTalkAdditionalAppInheritsEffectiveBypassRegistrationSetting(t *testing.T) {
+	repo := &panelRateLimitSettingRepo{values: map[string]string{
+		SettingKeyDingTalkConnectBypassRegistration: "true",
+	}}
+	s := &SettingService{settingRepo: repo, cfg: &config.Config{DingTalk: config.DingTalkConnectConfig{BypassRegistration: false}}}
+	app := config.DingTalkAppConfig{ID: "engineering", Name: "Engineering", ClientID: "client-a", ClientSecret: "secret-a", RedirectURL: "https://example.com/api/v1/auth/oauth/dingtalk/callback", CorpID: "corp-a", Enabled: true}
+	require.NoError(t, s.SaveDingTalkApps(context.Background(), []config.DingTalkAppConfig{app}))
+
+	effective, err := s.GetDingTalkOAuthConfigForApp(context.Background(), app.ID)
+	require.NoError(t, err)
+	require.True(t, effective.BypassRegistration)
 }

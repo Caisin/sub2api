@@ -105,12 +105,23 @@ func (s *SettingService) GetDingTalkOAuthConfigForApp(ctx context.Context, id st
 			break
 		}
 		cfg := s.cfg.DingTalk
+		// The default DingTalk config may be overridden in the settings table.
+		// Carry that effective registration policy into additional applications so
+		// they behave exactly like the default login flow.
+		if settings, settingsErr := s.settingRepo.GetMultiple(ctx, []string{SettingKeyDingTalkConnectBypassRegistration}); settingsErr == nil {
+			if raw := strings.TrimSpace(settings[SettingKeyDingTalkConnectBypassRegistration]); raw != "" {
+				cfg.BypassRegistration = strings.EqualFold(raw, "true")
+			}
+		}
 		cfg.Apps = nil
 		cfg.Enabled, cfg.ClientID, cfg.ClientSecret, cfg.RedirectURL = true, app.ClientID, app.ClientSecret, app.RedirectURL
 		cfg.InternalCorpID = app.CorpID
 		cfg.DingTalkAppKind, cfg.AppType, cfg.CorpRestrictionPolicy = "internal_app", "internal", "internal_only"
-		// New applications follow the site's registration policy.
-		cfg.BypassRegistration = false
+		// Additional applications use the same registration policy as the
+		// default DingTalk login. In particular, when the site disables normal
+		// registration but allows the default DingTalk enterprise flow to create
+		// users, selecting another configured organization must not unexpectedly
+		// downgrade the flow to "bind an existing account only".
 		if cfg.AuthorizeURL == "" {
 			cfg.AuthorizeURL = "https://login.dingtalk.com/oauth2/auth"
 		}

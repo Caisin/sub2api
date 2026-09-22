@@ -672,6 +672,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/statistics',
+    name: 'AdminStatistics',
+    component: () => import('@/views/user/DingTalkStatisticsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Statistics',
+      titleKey: 'nav.statistics'
+    }
+  },
+  {
     path: '/admin/affiliates',
     redirect: '/admin/affiliates/invites'
   },
