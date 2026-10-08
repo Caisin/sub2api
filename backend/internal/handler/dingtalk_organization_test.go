@@ -16,7 +16,7 @@ import (
 func TestDingTalkApplicationStateAndSyntheticIdentity(t *testing.T) {
 	require.Equal(t, "engineering", dingTalkAppFromState("random-state.engineering"))
 	require.Empty(t, dingTalkAppFromState("legacy-state"))
-	require.Equal(t, buildDingTalkSyntheticEmail("user"), buildDingTalkAppSyntheticEmail("default", "user"))
+	require.Equal(t, buildDingTalkAppSyntheticEmail("", "user"), buildDingTalkAppSyntheticEmail("default", "user"))
 	a := buildDingTalkAppSyntheticEmail("a", "user")
 	b := buildDingTalkAppSyntheticEmail("b", "user")
 	require.NotEqual(t, a, b)

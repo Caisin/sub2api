@@ -342,7 +342,7 @@ export default {
       error: {
         title: 'DingTalk Sign-in Failed',
         csrf: 'Login session expired, please scan again',
-        corp_rejected: 'Your DingTalk account is not part of this organization. Please contact administrator',
+        corp_rejected: 'Your DingTalk account is no longer in this organization’s employee directory. Login is not allowed.',
         dingtalk_not_enabled: 'DingTalk login is not enabled',
         upstream_error: 'DingTalk service is temporarily unavailable. Please try again later',
         missing_browser_session: 'Browser session lost. Please login again',

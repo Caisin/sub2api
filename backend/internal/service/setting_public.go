@@ -294,7 +294,6 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 	// Password reset requires email verification to be enabled
 	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
-	passwordResetEnabled := emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true"
 	registrationEmailSuffixWhitelist := ParseRegistrationEmailSuffixWhitelist(
 		settings[SettingKeyRegistrationEmailSuffixWhitelist],
 	)
@@ -314,13 +313,13 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	}
 
 	return &PublicSettings{
-		RegistrationEnabled:                 settings[SettingKeyRegistrationEnabled] == "true",
+		RegistrationEnabled:                 false, // Email registration is retired.
 		EmailVerifyEnabled:                  emailVerifyEnabled,
 		ForceEmailOnThirdPartySignup:        settings[SettingKeyForceEmailOnThirdPartySignup] == "true",
 		RegistrationEmailSuffixWhitelist:    registrationEmailSuffixWhitelist,
 		RegistrationEmailDomainQuotaEnabled: settings[SettingKeyRegistrationEmailDomainQuotaEnabled] == "true",
 		PromoCodeEnabled:                    settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
-		PasswordResetEnabled:                passwordResetEnabled,
+		PasswordResetEnabled:                false,                                           // Email/password login is retired.
 		InvitationCodeEnabled:               settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                         settings[SettingKeyTotpEnabled] == "true",
 		PasskeyEnabled:                      s.passkeyConfigured() && s.passkeySettingEnabled(settings),

@@ -52,7 +52,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/register',
     name: 'Register',
-    component: () => import('@/views/auth/RegisterView.vue'),
+    redirect: '/login',
     meta: {
       requiresAuth: false,
       title: 'Register',
@@ -62,7 +62,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/email-verify',
     name: 'EmailVerify',
-    component: () => import('@/views/auth/EmailVerifyView.vue'),
+    redirect: '/login',
     meta: {
       requiresAuth: false,
       title: 'Verify Email'
@@ -122,7 +122,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/auth/dingtalk/email-completion',
     name: 'dingtalk-email-completion',
-    component: () => import('@/views/auth/DingTalkEmailCompletionView.vue'),
+    redirect: '/login',
     meta: {
       requiresAuth: false,
       title: 'DingTalk Email Completion'
@@ -141,7 +141,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/forgot-password',
     name: 'ForgotPassword',
-    component: () => import('@/views/auth/ForgotPasswordView.vue'),
+    redirect: '/login',
     meta: {
       requiresAuth: false,
       title: 'Forgot Password',
@@ -151,7 +151,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/reset-password',
     name: 'ResetPassword',
-    component: () => import('@/views/auth/ResetPasswordView.vue'),
+    redirect: '/login',
     meta: {
       requiresAuth: false,
       title: 'Reset Password'
