@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -53,12 +54,18 @@ type DingTalkQuotaGrant struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 type DingTalkOrganizationService struct {
-	db    *sql.DB
-	users *UserService
+	db         *sql.DB
+	users      *UserService
+	afterSync  func(context.Context, string, []DingTalkDirectoryMember) error
+	syncCtx    context.Context
+	syncCancel context.CancelFunc
+	syncMu     sync.Mutex
+	syncWG     sync.WaitGroup
 }
 
 func NewDingTalkOrganizationService(db *sql.DB, users *UserService) *DingTalkOrganizationService {
-	return &DingTalkOrganizationService{db: db, users: users}
+	ctx, cancel := context.WithCancel(context.Background())
+	return &DingTalkOrganizationService{db: db, users: users, syncCtx: ctx, syncCancel: cancel}
 }
 
 const maxDingTalkBudgetCents int64 = 100000000000

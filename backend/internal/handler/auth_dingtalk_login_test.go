@@ -201,6 +201,15 @@ func (s *dingTalkRefreshCache) DeleteRefreshToken(_ context.Context, key string)
 	return nil
 }
 
+func (s *dingTalkRefreshCache) DeleteUserRefreshTokens(_ context.Context, userID int64) error {
+	for key, token := range s.tokens {
+		if token.UserID == userID {
+			delete(s.tokens, key)
+		}
+	}
+	return nil
+}
+
 func TestDingTalkLoginSeparatesApplicationIdentities(t *testing.T) {
 	directoryError := atomic.Value{}
 	directoryError.Store("")

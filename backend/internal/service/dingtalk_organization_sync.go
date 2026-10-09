@@ -21,6 +21,12 @@ type DingTalkSyncJob struct {
 	Members     int        `json:"members"`
 }
 
+// SetAfterSync installs account reconciliation at startup. It runs only after a
+// complete directory has been fetched and committed, while the job lease is held.
+func (s *DingTalkOrganizationService) SetAfterSync(sync func(context.Context, string, []DingTalkDirectoryMember) error) {
+	s.afterSync = sync
+}
+
 // The database lease deduplicates requests across server instances. An interrupted
 // process leaves a visible expired job which can be retried, rather than running forever.
 func (s *DingTalkOrganizationService) SyncStatus(ctx context.Context, app string) (*DingTalkSyncJob, error) {
@@ -37,6 +43,11 @@ func (s *DingTalkOrganizationService) SyncStatus(ctx context.Context, app string
 }
 
 func (s *DingTalkOrganizationService) StartSync(ctx context.Context, app string, read func(context.Context) ([]DingTalkDepartment, []DingTalkDirectoryMember, error)) (*DingTalkSyncJob, error) {
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
+	if s.syncCtx.Err() != nil {
+		return nil, ErrServiceUnavailable
+	}
 	id := uuid.NewString()
 	job := &DingTalkSyncJob{JobID: id, Status: "running"}
 	err := s.db.QueryRowContext(ctx, `INSERT INTO dingtalk_sync_jobs(app_id,job_id,status,expires_at)
@@ -51,13 +62,17 @@ func (s *DingTalkOrganizationService) StartSync(ctx context.Context, app string,
 	if err != nil {
 		return nil, err
 	}
-	go s.runSync(app, id, read)
+	s.syncWG.Add(1)
+	go func() {
+		defer s.syncWG.Done()
+		s.runSync(app, id, read)
+	}()
 	return job, nil
 }
 
 func (s *DingTalkOrganizationService) runSync(app, id string, read func(context.Context) ([]DingTalkDepartment, []DingTalkDirectoryMember, error)) {
 	// Never inherit the HTTP request cancellation or its timeout.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	ctx, cancel := context.WithTimeout(s.syncCtx, 30*time.Minute)
 	defer cancel()
 	status, message := "failed", "Sync failed; check application permissions and retry"
 	departments, members := 0, 0
@@ -76,6 +91,9 @@ func (s *DingTalkOrganizationService) runSync(app, id string, read func(context.
 	if err == nil {
 		err = s.replaceDirectory(ctx, app, ds, ms, id)
 	}
+	if err == nil && s.afterSync != nil {
+		err = s.afterSync(ctx, app, ms)
+	}
 	if err != nil {
 		log.Printf("DingTalk sync failed: %s", logredact.RedactText(err.Error()))
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -84,4 +102,12 @@ func (s *DingTalkOrganizationService) runSync(app, id string, read func(context.
 		return
 	}
 	status, message, departments, members = "succeeded", "", len(ds), len(ms)
+}
+
+// Stop cancels both scheduled and manual syncs before database/cache shutdown.
+func (s *DingTalkOrganizationService) Stop() {
+	s.syncMu.Lock()
+	s.syncCancel()
+	s.syncMu.Unlock()
+	s.syncWG.Wait()
 }

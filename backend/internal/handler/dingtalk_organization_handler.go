@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -8,16 +9,22 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/robfig/cron/v3"
 )
 
 type DingTalkOrganizationHandler struct {
 	settings     *service.SettingService
 	organization *service.DingTalkOrganizationService
 	auth         *AuthHandler
+	apiKeys      *service.APIKeyService
+	dailySync    *cron.Cron
+	dailyCancel  context.CancelFunc
 }
 
-func NewDingTalkOrganizationHandler(db *sql.DB, settings *service.SettingService, users *service.UserService, auth *AuthHandler) *DingTalkOrganizationHandler {
-	return &DingTalkOrganizationHandler{settings: settings, organization: service.NewDingTalkOrganizationService(db, users), auth: auth}
+func NewDingTalkOrganizationHandler(db *sql.DB, settings *service.SettingService, users *service.UserService, auth *AuthHandler, apiKeys *service.APIKeyService) *DingTalkOrganizationHandler {
+	h := &DingTalkOrganizationHandler{settings: settings, organization: service.NewDingTalkOrganizationService(db, users), auth: auth, apiKeys: apiKeys}
+	h.organization.SetAfterSync(h.reconcileDepartedMembers)
+	return h
 }
 func dingTalkActor(c *gin.Context) (int64, bool, bool) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)

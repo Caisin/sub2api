@@ -97,6 +97,7 @@ func ProvideAdminHandlers(
 }
 
 func ProvideGatewayHandler(
+	dingTalkOrganization *DingTalkOrganizationHandler,
 	gatewayService *service.GatewayService,
 	openAIGatewayService *service.OpenAIGatewayService,
 	geminiCompatService *service.GeminiMessagesCompatService,
@@ -118,6 +119,7 @@ func ProvideGatewayHandler(
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
 		errorPassthroughService, contentModerationService, userMsgQueueService, cfg, settingService)
 	h.securityAuditCoordinator = coordinator
+	h.dingTalkOrganization = dingTalkOrganization
 	return h
 }
 
@@ -234,7 +236,7 @@ func ProvideHandlers(
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
 	// Top-level handlers
-	NewDingTalkOrganizationHandler,
+	ProvideDingTalkOrganizationHandler,
 	NewAuthHandler,
 	NewUserHandler,
 	NewAPIKeyHandler,
