@@ -354,7 +354,8 @@ func TestUserHandlerGetProfileReturnsLegacyCompatibilityFields(t *testing.T) {
 
 	linuxdoCompatBinding, ok := identityBindings["linuxdo"].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "profile.authBindings.notes.canUnbind", linuxdoCompatBinding["note_key"])
+	require.Equal(t, false, linuxdoCompatBinding["can_unbind"])
+	require.Equal(t, "profile.authBindings.notes.bindAnotherBeforeUnbind", linuxdoCompatBinding["note_key"])
 
 	profileSources, ok := resp.Data["profile_sources"].(map[string]any)
 	require.True(t, ok)
